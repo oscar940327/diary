@@ -100,10 +100,12 @@ class SupabaseJwtVerifier:
                 refresh,
             )
         except (
+            AttributeError,
             JSONDecodeError,
             PyJWKClientConnectionError,
             PyJWKClientError,
             PyJWKSetError,
+            UnicodeDecodeError,
         ) as error:
             raise AuthenticationServiceUnavailable from error
 

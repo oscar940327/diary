@@ -141,12 +141,16 @@
   and invalid-signature tokens with the same `401` body and challenge header.
   The pre-existing real-system malformed and expired token coverage remains
   active.
+- The first fresh spec review found that structurally malformed key entries
+  such as `{"keys":[null]}` could escape PyJWT as `AttributeError`. A second
+  red-green cycle now classifies external JWKS decode and key-shape failures as
+  the same sanitized `503` without catching unrelated verifier exceptions.
 - Diary CI now pins Personal Website commit
   `c6592f326a03fe4ec3a25e005cd71df6d1b5d219`, replacing the intermediate
   `dc5a9d9227c244b22aac78883021f1bd30a7775b` pin.
 - Local verification:
   - `python -m mypy src tests`: 14 source files passed.
-  - Focused auth suite: all 11 tests passed.
+  - Focused auth suite: all 12 tests passed.
   - Full Diary suite: 25 tests passed; the two production-CORS cases could not
     start because an unrelated user-owned
     `python -m uvicorn main:app --reload --port 8001` process already occupied

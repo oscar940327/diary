@@ -15,7 +15,7 @@ from pytest import MonkeyPatch, mark
 from diary_api.app import app
 from diary_api.auth import auth_settings, token_verifier
 
-TEST_TOKEN = (
+UNKNOWN_KID_TOKEN = (
     "eyJhbGciOiJFUzI1NiIsImtpZCI6Im1pc3NpbmcifQ."
     "eyJhdWQiOiJhdXRoZW50aWNhdGVkIn0."
     "c2lnbmF0dXJl"
@@ -48,7 +48,7 @@ def _jwks_endpoint(response_body: bytes) -> Iterator[str]:
 def _request_with_jwks(
     monkeypatch: MonkeyPatch,
     response_body: bytes,
-    token: str | Callable[[str], str] = TEST_TOKEN,
+    token: str | Callable[[str], str] = UNKNOWN_KID_TOKEN,
 ) -> Response:
     with _jwks_endpoint(response_body) as supabase_url:
         access_token = token(supabase_url) if callable(token) else token
@@ -201,12 +201,18 @@ def test_protected_owner_endpoint_reports_non_object_jwks_as_unavailable(
     [
         b"{",
         b"{}",
+        b'{"keys":[null]}',
         (
             b'{"keys":[{"kty":"oct","k":"c2VjcmV0",'
             b'"use":"enc","kid":"not-for-signing"}]}'
         ),
     ],
-    ids=["malformed", "empty", "no-usable-signing-key"],
+    ids=[
+        "malformed-json",
+        "empty",
+        "malformed-key",
+        "no-usable-signing-key",
+    ],
 )
 def test_protected_owner_endpoint_reports_invalid_jwks_as_unavailable(
     monkeypatch: MonkeyPatch,
