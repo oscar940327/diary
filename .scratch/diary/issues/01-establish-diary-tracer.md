@@ -6,14 +6,14 @@
 
 **Status:** ready-for-agent
 
-- [ ] The Sidebar label is `DIARY` immediately below `JOURNEY` and above `MktAgent` in desktop and responsive navigation.
-- [ ] Selecting `DIARY` opens a first-class page rather than an iframe or a separately hosted frontend.
-- [ ] Only the Diary page body uses React, TypeScript, and Vite; existing pages retain their current implementation and behavior.
-- [ ] The Diary page calls a FastAPI health/readiness contract and renders an understandable ready or unavailable state.
-- [ ] The GitHub Pages build preserves all existing site pages and assets and uses the repository deployment base correctly.
-- [ ] Local startup and verification instructions cover both repositories without requiring a production credential.
-- [ ] A browser-level test verifies navigation to Diary and the backend health result.
-- [ ] The initial automated checks run in CI and contain no application secret.
+- [x] The Sidebar label is `DIARY` immediately below `JOURNEY` and above `MktAgent` in desktop and responsive navigation.
+- [x] Selecting `DIARY` opens a first-class page rather than an iframe or a separately hosted frontend.
+- [x] Only the Diary page body uses React, TypeScript, and Vite; existing pages retain their current implementation and behavior.
+- [x] The Diary page calls a FastAPI health/readiness contract and renders an understandable ready or unavailable state.
+- [x] The GitHub Pages build preserves all existing site pages and assets and uses the repository deployment base correctly.
+- [x] Local startup and verification instructions cover both repositories without requiring a production credential.
+- [x] A browser-level test verifies navigation to Diary and the backend health result.
+- [x] The initial automated checks run in CI and contain no application secret.
 
 ## Comments
 
@@ -70,3 +70,47 @@ Spec finding remains unresolved.
 
 Ticket 01 should not pass code review until the real frontend-to-FastAPI browser
 acceptance test is added and the full verification suite is rerun.
+
+### 2026-07-26 - Code re-review
+
+Implementation commits:
+
+- Diary backend and cross-repository acceptance:
+  `8addbd4a2389fe4df353a773f9eb120e7a2efbfb`
+- Personal Website frontend:
+  `e8e6bbe3831d91c2aca73c7f9fdf790f1dc6ccbf`
+
+Review verdict: **Passed.** Standards and Spec both pass with zero findings.
+The previous blocking finding is resolved.
+
+#### Browser acceptance evidence
+
+- `tests/acceptance/test_diary_tracer.py` does not use `page.route`,
+  `route.fulfill`, or any other `/health` mock.
+- Its session fixture starts the real FastAPI application through Uvicorn and
+  starts the pinned Personal Website checkout through its real Vite executable.
+- The fixture removes `VITE_DIARY_API_URL`, so React requests the local default
+  `/diary-api/health` path.
+- Chromium navigates from HOME to DIARY and observes the response at
+  `/diary-api/health`; Vite proxies and rewrites that request to FastAPI
+  `/health`.
+- The test asserts HTTP 200, the exact FastAPI JSON response, the final Diary
+  URL, and the rendered ready state.
+- Backend CI pins the Personal Website implementation SHA above and runs the
+  complete pytest suite containing this acceptance test.
+
+#### Verification
+
+- Backend `python -m pytest -vv`: **2 passed**, including the real Chromium
+  cross-repository acceptance; one non-blocking Starlette/httpx deprecation
+  warning.
+- Backend `python -m mypy src tests`: **passed**, no issues in 5 source files.
+- Frontend `npm.cmd run test`: **passed** (`typecheck` plus **3 Playwright
+  tests**).
+- Frontend `npm.cmd run build`: **passed**.
+- Frontend `npm.cmd run verify:build`: **passed**.
+- `git diff --check` passed for both review ranges, and both repository HEADs
+  match the implementation SHAs above.
+
+No Ticket 02 authentication, authorization, CORS, persistence, Entry, or queue
+behavior was implemented. Ticket 02 was not started.
