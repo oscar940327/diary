@@ -199,18 +199,27 @@ def test_protected_owner_endpoint_reports_non_object_jwks_as_unavailable(
 @mark.parametrize(
     "jwks_body",
     [
+        b"",
         b"{",
+        b"\xff",
         b"{}",
         b'{"keys":[null]}',
+        (
+            b'{"keys":[{"kty":"RSA","n":[],"e":"AQAB",'
+            b'"use":"sig","kid":"bad-fields"}]}'
+        ),
         (
             b'{"keys":[{"kty":"oct","k":"c2VjcmV0",'
             b'"use":"enc","kid":"not-for-signing"}]}'
         ),
     ],
     ids=[
+        "empty-response",
         "malformed-json",
+        "invalid-encoding",
         "empty",
         "malformed-key",
+        "malformed-key-fields",
         "no-usable-signing-key",
     ],
 )

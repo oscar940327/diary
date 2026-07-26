@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import lru_cache
-from json import JSONDecodeError
 from typing import Any
 from uuid import UUID
 
@@ -101,11 +100,11 @@ class SupabaseJwtVerifier:
             )
         except (
             AttributeError,
-            JSONDecodeError,
             PyJWKClientConnectionError,
             PyJWKClientError,
             PyJWKSetError,
-            UnicodeDecodeError,
+            TypeError,
+            ValueError,
         ) as error:
             raise AuthenticationServiceUnavailable from error
 
