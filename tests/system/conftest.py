@@ -47,6 +47,7 @@ MAGIC_LINK_RATE_LIMIT_POLL_SECONDS = 0.1
 class LocalSupabase:
     api_url: str
     publishable_key: str
+    secret_key: str
     service_role_key: str
     mailpit_url: str
 
@@ -104,6 +105,7 @@ def _supabase_status() -> LocalSupabase:
     return LocalSupabase(
         api_url=values["API_URL"],
         publishable_key=values["PUBLISHABLE_KEY"],
+        secret_key=values["SECRET_KEY"],
         service_role_key=values["SERVICE_ROLE_KEY"],
         mailpit_url=values["MAILPIT_URL"],
     )
@@ -176,6 +178,13 @@ def provisioned_users(local_supabase: LocalSupabase) -> LocalSupabase:
         user_id=NON_OWNER_ID,
         email=NON_OWNER_EMAIL,
     )
+    response = httpx.post(
+        f"{local_supabase.api_url}/rest/v1/diary_owners",
+        headers=_admin_headers(local_supabase),
+        json={"user_id": str(OWNER_ID)},
+        timeout=10,
+    )
+    assert response.status_code == 201, response.text
     return local_supabase
 
 
@@ -417,12 +426,14 @@ def diary_api(
     environment.update(
         {
             "DIARY_ENVIRONMENT": "test",
-            "DIARY_OWNER_ID": str(OWNER_ID),
             "DIARY_PRODUCTION_ORIGIN": (
                 "https://oscar940327.github.io"
             ),
             "DIARY_LOCAL_ORIGINS": (
                 "http://127.0.0.1:4173,http://127.0.0.1:5173"
+            ),
+            "SUPABASE_SECRET_KEY": (
+                provisioned_users.secret_key
             ),
             "SUPABASE_URL": provisioned_users.api_url,
         }
@@ -456,9 +467,11 @@ def production_diary_api(
     environment.update(
         {
             "DIARY_ENVIRONMENT": "production",
-            "DIARY_OWNER_ID": str(OWNER_ID),
             "DIARY_PRODUCTION_ORIGIN": (
                 "https://oscar940327.github.io"
+            ),
+            "SUPABASE_SECRET_KEY": (
+                provisioned_users.secret_key
             ),
             "SUPABASE_URL": provisioned_users.api_url,
         }

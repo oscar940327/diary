@@ -179,8 +179,9 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 
 - The product has one permanent owner identity. Single-user is a product boundary, not an MVP shortcut.
 - Supabase Auth owns passwordless Magic Link or OTP sign-in. Public sign-up is disabled and the one allowed owner is provisioned administratively.
-- FastAPI validates token signature, issuer, audience, expiry, and the configured owner identity on every protected request. Possession of another valid Supabase token is insufficient.
-- PostgreSQL Row Level Security independently restricts personal tables to the configured owner. Backend authorization and RLS are defense in depth.
+- `public.diary_owners` contains exactly one administratively provisioned row and is the source of truth for the permanent owner identity; the database rejects a second row.
+- FastAPI validates token signature, issuer, audience, and expiry, then reads the singleton owner registry with a backend-only Supabase secret and compares the verified subject on every protected request. Possession of another valid Supabase token is insufficient.
+- PostgreSQL Row Level Security independently restricts personal tables by comparing the caller identity with the same owner row. Backend authorization and RLS are defense in depth.
 - The public frontend never receives a database secret, OpenRouter key, GHCR credential, Azure credential, or OpenRouter Management Key.
 - The fixed product timezone is `Asia/Taipei`. All stored timestamps use UTC; date grouping, calendar boundaries, default Entry Time, and the meaning of today use the fixed owner timezone.
 - Mobile support means a responsive web application in current mobile browsers. It does not introduce a native application or offline synchronization.

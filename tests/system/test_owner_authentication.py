@@ -159,21 +159,6 @@ def test_rls_exposes_owner_configuration_only_to_the_owner(
     resource_url = (
         f"{local_supabase.api_url}/rest/v1/diary_owners"
     )
-    provision_response = httpx.post(
-        resource_url,
-        headers={
-            "apikey": local_supabase.service_role_key,
-            "Authorization": (
-                f"Bearer {local_supabase.service_role_key}"
-            ),
-            "Content-Type": "application/json",
-        },
-        json={
-            "user_id": "61c2f4ca-2fab-4b50-a0cf-12aac0ec0b24",
-        },
-    )
-    assert provision_response.status_code == 201
-
     owner_response = httpx.get(
         f"{resource_url}?select=user_id",
         headers={
@@ -216,3 +201,82 @@ def test_rls_prevents_non_owner_from_mutating_owner_configuration(
     )
 
     assert response.status_code == 403
+
+
+def test_database_rejects_a_second_diary_owner(
+    local_supabase: SupabaseSettings,
+) -> None:
+    resource_url = (
+        f"{local_supabase.api_url}/rest/v1/diary_owners"
+    )
+    admin_headers = {
+        "apikey": local_supabase.service_role_key,
+        "Authorization": f"Bearer {local_supabase.service_role_key}",
+        "Content-Type": "application/json",
+    }
+    response = httpx.post(
+        resource_url,
+        headers=admin_headers,
+        json={
+            "user_id": "0c97345c-50ac-4fcb-9664-bf796b854a92",
+        },
+    )
+
+    try:
+        assert response.status_code == 409
+    finally:
+        if response.status_code == 201:
+            httpx.delete(
+                (
+                    f"{resource_url}?user_id=eq."
+                    "0c97345c-50ac-4fcb-9664-bf796b854a92"
+                ),
+                headers=admin_headers,
+            )
+
+
+def test_protected_api_fails_closed_when_owner_registry_is_empty(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    resource_url = (
+        f"{local_supabase.api_url}/rest/v1/diary_owners"
+    )
+    admin_headers = {
+        "apikey": local_supabase.service_role_key,
+        "Authorization": f"Bearer {local_supabase.service_role_key}",
+        "Content-Type": "application/json",
+    }
+    delete_response = httpx.delete(
+        (
+            f"{resource_url}?user_id=eq."
+            "61c2f4ca-2fab-4b50-a0cf-12aac0ec0b24"
+        ),
+        headers=admin_headers,
+    )
+    assert delete_response.status_code == 204
+
+    try:
+        response = httpx.get(
+            f"{diary_api}/auth/me",
+            headers={
+                "Authorization": f"Bearer {owner_access_token}",
+            },
+        )
+    finally:
+        restore_response = httpx.post(
+            resource_url,
+            headers=admin_headers,
+            json={
+                "user_id": (
+                    "61c2f4ca-2fab-4b50-a0cf-12aac0ec0b24"
+                ),
+            },
+        )
+        assert restore_response.status_code == 201
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Owner authorization service unavailable"
+    }

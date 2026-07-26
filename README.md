@@ -28,8 +28,9 @@ npm.cmd run supabase -- db reset
 npm.cmd run supabase -- status -o env
 ```
 
-The status command prints local-only development values. Keep service-role and
-JWT signing values out of the frontend, screenshots, logs, and Git.
+The status command prints local-only development values. Keep the secret or
+service-role key and JWT signing values out of the frontend, screenshots,
+logs, and Git.
 
 For interactive local use, open Supabase Studio at
 `http://127.0.0.1:54323`, create the one owner under Authentication, and copy
@@ -44,15 +45,18 @@ Set the API process environment:
 
 ```powershell
 $env:DIARY_ENVIRONMENT = "local"
-$env:DIARY_OWNER_ID = "replace-with-owner-uuid"
 $env:SUPABASE_URL = "http://127.0.0.1:54321"
+$env:SUPABASE_SECRET_KEY = "replace-with-local-secret-or-service-role-key"
 python -m uvicorn diary_api.app:app --app-dir src --reload
 ```
 
 The API readiness endpoint is `http://127.0.0.1:8000/health`. Protected
 requests use `Authorization: Bearer <access-token>` and are accepted only when
 Supabase's published signing key verifies the token and its issuer, audience,
-expiry, and subject all match the configured owner.
+and expiry, and the token subject matches the single row in
+`public.diary_owners`. The database prevents a second owner row. FastAPI reads
+that registry with the backend-only secret while PostgreSQL RLS independently
+checks the caller's Supabase identity.
 
 In the sibling frontend repository, copy `.env.example` to `.env.local`, use
 the local `API_URL` and `PUBLISHABLE_KEY` printed by Supabase, then run:
@@ -72,18 +76,22 @@ Before production use:
 
 1. Apply `supabase/migrations` to the hosted Supabase project.
 2. Disable public user sign-up, create the permanent owner administratively,
-   and insert that user's UUID into `public.diary_owners`.
+   and insert that user's UUID into `public.diary_owners`. The insert fails if
+   an owner row already exists.
 3. Configure the exact GitHub Pages URL as the Supabase Site URL and allowed
    Magic Link redirect.
-4. Give the backend the variables below.
-5. Give the frontend only the public variables documented in its README.
+4. Create a backend-only Supabase secret key in the hosted project, store it
+   in Azure Key Vault, and expose it to the API as
+   `SUPABASE_SECRET_KEY`.
+5. Give the backend the remaining variables below.
+6. Give the frontend only the public variables documented in its README.
 
 Required backend variables:
 
 - `DIARY_ENVIRONMENT=production`
-- `DIARY_OWNER_ID`
 - `DIARY_PRODUCTION_ORIGIN=https://oscar940327.github.io`
 - `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY` (backend-only Key Vault reference)
 
 Optional backend overrides:
 
@@ -93,8 +101,10 @@ Optional backend overrides:
 `DIARY_LOCAL_ORIGINS` is only for local/test environments. Production CORS
 accepts exactly `DIARY_PRODUCTION_ORIGIN`.
 
-The backend does not require a Supabase service-role key or JWT signing secret.
-The frontend requires only the Supabase URL and publishable key. Never expose a
+The backend does not receive a JWT signing secret: it verifies access tokens
+through Supabase's published JWKS. It does require a Supabase secret key to
+read the singleton owner registry independently of caller RLS. The frontend
+requires only the Supabase URL and publishable key. Never expose a secret or
 service-role key, JWT private key or secret, database password, OpenRouter key,
 Azure secret, or registry credential to the browser or Git.
 

@@ -7,7 +7,7 @@
 **Status:** ready-for-agent
 
 - [x] The Diary page supports Supabase Magic Link or OTP sign-in, sign-out, session restoration, expiry, and understandable authentication errors.
-- [x] Public sign-up is disabled and only the configured pre-created owner identity is accepted.
+- [x] Public sign-up is disabled and only the pre-created identity in the database-enforced singleton owner registry is accepted.
 - [x] Every protected FastAPI request verifies token signature, issuer, audience, expiry, and owner identity.
 - [x] A valid Supabase token belonging to a different identity receives the same protected denial behavior as other unauthorized access.
 - [x] Row Level Security independently prevents a non-owner from reading or mutating personal tables.
@@ -50,3 +50,42 @@
 - Personal Website remained at
   `dc5a9d9227c244b22aac78883021f1bd30a7775b`. Ticket 03 remains unimplemented.
   Ticket 02 still requires a new separate-session code review.
+
+### 2026-07-27 - Unresolved review findings implementation
+
+- TDD red evidence:
+  - A parseable token whose JWKS endpoint was unreachable received `401`
+    instead of the expected `503`.
+  - Removing `DIARY_OWNER_ID` made a valid owner request fail, and the original
+    schema accepted a second owner row with `201`.
+  - The frontend rendered a protected-access `503` as signed out, offered no
+    recovery action, and a deliberately late stale `401` could replace a newer
+    authenticated browser state.
+- JWT validation now maps only invalid, expired, unsupported, or claim-invalid
+  tokens to the uniform `401`. JWKS connection and invalid-set failures return
+  a sanitized `503`; unexpected verifier exceptions are no longer hidden as
+  authentication failures.
+- `public.diary_owners` is now a database-enforced singleton and the sole owner
+  source of truth. FastAPI reads it with backend-only
+  `SUPABASE_SECRET_KEY`; `DIARY_OWNER_ID` was removed. RLS still evaluates the
+  caller JWT independently. Missing or unreadable owner configuration fails
+  closed with `503`.
+- The Diary page preserves a valid Supabase session when protected access is
+  temporarily unavailable, exposes a retry action, and ignores aborted or
+  stale results after a newer session or verification attempt. A real `401`
+  for the current session still clears that expired or unauthorized session.
+- TDD green and full verification:
+  - `python -m mypy src tests`: 14 files passed.
+  - `python -m pytest -vv`: all 18 tests passed through real local Supabase
+    Auth/Postgres/PostgREST, Uvicorn, HTTP, Vite, Mailpit, and mobile Chromium.
+  - `npm.cmd run supabase -- db lint --level warning`: no schema errors.
+  - Personal Website typecheck passed; all 7 Playwright tests passed;
+    production build and preserved-site build verification passed.
+- The exact Magic Link rate-limit retry remains limited to
+  `429 over_email_send_rate_limit` for at most three seconds. OTP, Mailpit,
+  mobile login, session restoration, sign-out, JWT, RLS, and CORS coverage all
+  remain active and passing.
+- Duplicate acceptance/system service orchestration was left unchanged because
+  it is non-blocking and extracting it would broaden this review fix.
+- Ticket 03 remains unimplemented. Ticket 02 is not marked review-passed and
+  still requires a fresh `$code-review` session.

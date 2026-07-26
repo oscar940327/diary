@@ -12,7 +12,7 @@
 - [ ] Key Vault Standard, managed identity, least-privilege role assignments, and application secret references are provisioned without committing secret values.
 - [ ] FastAPI runs on Container Apps Consumption with public HTTPS ingress, `minReplicas = 0`, `maxReplicas = 1`, and the private commit-SHA GHCR image.
 - [ ] GHCR pull uses a dedicated package-read credential held as an Azure secret; Azure Container Registry is not provisioned.
-- [ ] Production configuration uses the selected Supabase project, owner identity, exact GitHub Pages CORS origin, and Azure-generated API hostname.
+- [ ] Production configuration uses the selected Supabase project, backend-only `SUPABASE_SECRET_KEY`, singleton owner registry, exact GitHub Pages CORS origin, and Azure-generated API hostname.
 - [ ] Structured `INFO` console logging reaches a 30-day Log Analytics workspace; Application Insights is absent.
 - [ ] Log Analytics has the initial 0.1 GB daily ingestion safety cap and owner notification.
 - [ ] The Diary resource scope has a USD 5 monthly budget with owner alerts at 50, 80, and 100 percent, without disabling the student spending limit or enabling pay-as-you-go.

@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from urllib.parse import urlparse
-from uuid import UUID
 
 
 class ConfigurationError(RuntimeError):
@@ -76,7 +75,6 @@ def cors_origins_from_environment() -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class AuthSettings:
-    owner_id: UUID
     jwt_issuer: str
     jwt_audience: str
 
@@ -105,7 +103,21 @@ class AuthSettings:
             )
 
         return cls(
-            owner_id=UUID(_required_environment("DIARY_OWNER_ID")),
             jwt_issuer=issuer,
             jwt_audience=audience,
+        )
+
+
+@dataclass(frozen=True)
+class OwnerRegistrySettings:
+    supabase_url: str
+    secret_key: str
+
+    @classmethod
+    def from_environment(cls) -> OwnerRegistrySettings:
+        return cls(
+            supabase_url=_required_environment(
+                "SUPABASE_URL"
+            ).rstrip("/"),
+            secret_key=_required_environment("SUPABASE_SECRET_KEY"),
         )

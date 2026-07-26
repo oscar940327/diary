@@ -88,7 +88,9 @@ Items in this section are directions, not commitments to the first MVP.
 - Public deployment requires an owner-only authentication boundary; an unguessable URL is not considered access control.
 - The owner must be able to open the personal website from a modern mobile browser, authenticate, and use the core Diary recording and history flows. This is responsive web support, not a native mobile application.
 - Authentication uses Supabase Auth with one pre-created owner email and passwordless Magic Link or OTP.
-- Public sign-up is disabled. FastAPI accepts authenticated requests only when the verified identity matches the configured owner.
+- Public sign-up is disabled. `public.diary_owners` contains exactly one administratively provisioned row and is the authoritative permanent owner identity; the database rejects a second row.
+- FastAPI reads the singleton owner registry with a backend-only Supabase secret and accepts protected requests only when the verified token subject matches that row. `DIARY_OWNER_ID` is not a second configuration source.
+- PostgreSQL RLS independently compares the caller identity with the same owner row, preserving defense in depth even if either the API authorization path or a direct database path is misconfigured.
 - Browser code may use only a Supabase publishable key. Supabase secret keys and AI provider keys remain in backend environment variables and are never exposed to the browser.
 - The FastAPI backend is deployed to Azure Container Apps on the Consumption plan.
 - Azure Container Apps uses `minReplicas = 0` and `maxReplicas = 1` so the single-user service can scale to zero, constrain cost, and accept cold starts.
@@ -138,7 +140,7 @@ Items in this section are directions, not commitments to the first MVP.
 - Only the Diary page body is implemented as a React and TypeScript application built with Vite and mounted inside the existing static page shell.
 - The GitHub Pages deployment builds the Diary assets while publishing the existing static pages unchanged. Vite's base path must match the `my-personal-website` repository path.
 - GitHub Pages serves only public frontend assets, the Supabase publishable key, and the public Azure API base URL. All secrets remain in backend environment variables.
-- The browser authenticates with Supabase Auth and sends the Supabase access token to the Azure-hosted FastAPI API. FastAPI validates the token and configured owner identity on every protected request.
+- The browser authenticates with Supabase Auth and sends the Supabase access token to the Azure-hosted FastAPI API. FastAPI validates the token and the authoritative singleton owner identity on every protected request.
 - Production CORS permits only the exact GitHub Pages origin or an explicitly configured future custom origin; local development origins are configured separately.
 - FastAPI persists the Entry Revision and enqueues its ID in Azure Storage Queue before returning success.
 - An event-driven Azure Container Apps Job consumes queued AI work, with zero minimum executions and at most one concurrent execution.
