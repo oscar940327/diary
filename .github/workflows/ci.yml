@@ -19,11 +19,11 @@ jobs:
         with:
           path: diary
 
-      - name: Check out Ticket 01 frontend
+      - name: Check out Ticket 02 frontend
         uses: actions/checkout@v6
         with:
           repository: oscar940327/my-personal-website
-          ref: e8e6bbe3831d91c2aca73c7f9fdf790f1dc6ccbf
+          ref: dc5a9d9227c244b22aac78883021f1bd30a7775b
           path: personal-website
           persist-credentials: false
 
@@ -39,7 +39,9 @@ jobs:
         with:
           node-version: "24"
           cache: npm
-          cache-dependency-path: personal-website/package-lock.json
+          cache-dependency-path: |
+            diary/package-lock.json
+            personal-website/package-lock.json
 
       - name: Install backend dependencies
         run: python -m pip install -e ".[dev]"
@@ -48,6 +50,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
         working-directory: personal-website
+
+      - name: Install local Supabase tooling
+        run: npm ci
+        working-directory: diary
 
       - name: Install browser
         run: python -m playwright install --with-deps chromium

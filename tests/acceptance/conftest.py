@@ -18,7 +18,7 @@ import pytest
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 API_READY_URL = "http://127.0.0.1:8000/health"
 FRONTEND_READY_URL = (
-    "http://127.0.0.1:4173/my-personal-website/index.html"
+    "http://127.0.0.1:4174/my-personal-website/index.html"
 )
 
 
@@ -124,6 +124,14 @@ def diary_services() -> Iterator[None]:
 
     frontend_environment = os.environ.copy()
     frontend_environment.pop("VITE_DIARY_API_URL", None)
+    frontend_environment.update(
+        {
+            "VITE_SUPABASE_URL": "http://127.0.0.1:54321",
+            "VITE_SUPABASE_PUBLISHABLE_KEY": (
+                "sb_publishable_ticket_01_acceptance"
+            ),
+        }
+    )
 
     with _running_service(
         [
@@ -148,7 +156,7 @@ def diary_services() -> Iterator[None]:
                 "--host",
                 "127.0.0.1",
                 "--port",
-                "4173",
+                "4174",
                 "--strictPort",
             ],
             cwd=frontend_repository,

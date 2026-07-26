@@ -1,79 +1,120 @@
 # Diary
 
-Diary is an owner-only personal record and memory system. Ticket 01 establishes
-the first tracer between the React page in the existing personal website and
-this FastAPI backend.
+Diary is an owner-only personal record and memory system. The frontend remains
+part of the existing personal website while this repository owns the FastAPI
+API, Supabase schema, and cross-repository system tests.
 
-## Run the API locally
-
-Requirements:
+## Local requirements
 
 - Python 3.12 or newer
+- Node.js 24 or newer
+- Docker Desktop
+- The sibling `personal_website` repository
 
-From this repository:
+Install the locked backend and local-infrastructure dependencies:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[dev]"
+npm.cmd ci
+```
+
+Start Supabase and apply the local migrations:
+
+```powershell
+npm.cmd run supabase -- start
+npm.cmd run supabase -- db reset
+npm.cmd run supabase -- status -o env
+```
+
+The status command prints local-only development values. Keep service-role and
+JWT signing values out of the frontend, screenshots, logs, and Git.
+
+For interactive local use, open Supabase Studio at
+`http://127.0.0.1:54323`, create the one owner under Authentication, and copy
+that user's UUID. In the Studio SQL editor, register the same UUID:
+
+```sql
+insert into public.diary_owners (user_id)
+values ('replace-with-owner-uuid');
+```
+
+Set the API process environment:
+
+```powershell
+$env:DIARY_ENVIRONMENT = "local"
+$env:DIARY_OWNER_ID = "replace-with-owner-uuid"
+$env:SUPABASE_URL = "http://127.0.0.1:54321"
 python -m uvicorn diary_api.app:app --app-dir src --reload
 ```
 
-The public readiness endpoint is available at
-`http://127.0.0.1:8000/health`.
+The API readiness endpoint is `http://127.0.0.1:8000/health`. Protected
+requests use `Authorization: Bearer <access-token>` and are accepted only when
+Supabase's published signing key verifies the token and its issuer, audience,
+expiry, and subject all match the configured owner.
 
-## Run the frontend locally
-
-The frontend is part of the sibling `personal_website` repository. In another
-PowerShell window:
+In the sibling frontend repository, copy `.env.example` to `.env.local`, use
+the local `API_URL` and `PUBLISHABLE_KEY` printed by Supabase, then run:
 
 ```powershell
 cd "E:\personal_website"
-npm.cmd install
+npm.cmd ci
 npm.cmd run dev
 ```
 
-Open `http://127.0.0.1:5173/my-personal-website/diary.html`.
+Open `http://127.0.0.1:5173/my-personal-website/diary.html`. Local Magic Link
+emails appear in Mailpit at `http://127.0.0.1:54324`.
 
-Vite proxies the local `/diary-api` path to `http://127.0.0.1:8000`. The
-production API URL is supplied later as a public build variable.
+## Production configuration
 
-The browser configuration contains only the public API URL. Ticket 01 requires
-no production credential.
+Before production use:
 
-## Verify
+1. Apply `supabase/migrations` to the hosted Supabase project.
+2. Disable public user sign-up, create the permanent owner administratively,
+   and insert that user's UUID into `public.diary_owners`.
+3. Configure the exact GitHub Pages URL as the Supabase Site URL and allowed
+   Magic Link redirect.
+4. Give the backend the variables below.
+5. Give the frontend only the public variables documented in its README.
 
-Install the backend test dependencies and Chromium once:
+Required backend variables:
+
+- `DIARY_ENVIRONMENT=production`
+- `DIARY_OWNER_ID`
+- `DIARY_PRODUCTION_ORIGIN=https://oscar940327.github.io`
+- `SUPABASE_URL`
+
+Optional backend overrides:
+
+- `SUPABASE_JWT_ISSUER` (defaults to `<SUPABASE_URL>/auth/v1`)
+- `SUPABASE_JWT_AUDIENCE` (defaults to `authenticated`)
+
+`DIARY_LOCAL_ORIGINS` is only for local/test environments. Production CORS
+accepts exactly `DIARY_PRODUCTION_ORIGIN`.
+
+The backend does not require a Supabase service-role key or JWT signing secret.
+The frontend requires only the Supabase URL and publishable key. Never expose a
+service-role key, JWT private key or secret, database password, OpenRouter key,
+Azure secret, or registry credential to the browser or Git.
+
+## Verification
+
+The complete backend suite starts a real local Supabase Auth/Postgres/PostgREST
+stack, provisions synthetic users, exercises real JWT and RLS behavior through
+HTTP, starts the sibling Vite/FastAPI applications, and completes the Magic
+Link journey in mobile-sized Chromium:
 
 ```powershell
-python -m pip install -e ".[dev]"
-python -m playwright install chromium
-```
-
-The browser acceptance test needs the Ticket 01 frontend checkout and its
-locked Node dependencies. Set its path explicitly so the same command works
-regardless of where the two repositories live:
-
-```powershell
-npm.cmd ci --prefix "E:\personal_website"
 $env:DIARY_FRONTEND_REPOSITORY = "E:\personal_website"
-python -m pytest tests\acceptance
-```
-
-That pytest command starts this repository's Uvicorn service on port `8000`
-and the frontend repository's Vite service on port `4173`, opens a real
-Chromium browser, navigates from HOME to DIARY, and waits for the unmocked
-`/diary-api/health` request to pass through Vite to FastAPI `/health`. The test
-stops both services when it finishes.
-
-Run the complete backend suite:
-
-```powershell
-python -m pytest
 python -m mypy src tests
+python -m pytest
 ```
 
-Run the complete frontend suite from `personal_website`:
+The system fixture resets only the local Supabase database. It never uses or
+changes a hosted project.
+
+Run the complete frontend verification from `personal_website`:
 
 ```powershell
 npm.cmd run typecheck
@@ -82,8 +123,5 @@ npm.cmd run build
 npm.cmd run verify:build
 ```
 
-Backend CI checks out the public frontend repository at the fixed Ticket 01
-commit, installs both repositories' dependencies, installs Chromium, and runs
-the complete backend suite. Keeping the cross-repository orchestration in the
-backend workflow means CI does not need a token that can read the private
-Diary repository from another repository.
+Backend CI checks out the frontend at a fixed reviewed commit so the real
+cross-repository browser contract cannot drift silently.

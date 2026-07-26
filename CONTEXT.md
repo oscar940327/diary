@@ -334,4 +334,7 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Start with `01 — Establish the Diary tracer`, the only dependency-free MVP ticket. Invoke `implement` for that ticket, use `tdd` within its scope, and run `code-review` in a new session before selecting the next dependency-ready ticket. Do not implement more than one ticket in the same pass.
+Ticket 02 owner authentication has been implemented with TDD and awaits
+`code-review` in a new session. Review the fixed Ticket 02 implementation
+range before treating the ticket as complete. Do not begin Ticket 03 unless
+that review passes with no unresolved serious finding.

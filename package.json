@@ -1,0 +1,14 @@
+{
+  "name": "diary-local-infrastructure",
+  "private": true,
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "supabase": "supabase"
+  },
+  "devDependencies": {
+    "supabase": "2.109.1"
+  }
+}
