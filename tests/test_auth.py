@@ -118,7 +118,13 @@ def test_protected_owner_endpoint_rejects_missing_credentials() -> None:
 
 @mark.parametrize(
     "token_case",
-    ["malformed", "expired", "invalid-claims", "invalid-signature"],
+    [
+        "malformed",
+        "expired",
+        "invalid-claims",
+        "overflowing-claims",
+        "invalid-signature",
+    ],
 )
 def test_protected_owner_endpoint_uniformly_rejects_invalid_tokens(
     monkeypatch: MonkeyPatch,
@@ -138,6 +144,8 @@ def test_protected_owner_endpoint_uniformly_rejects_invalid_tokens(
             claims["exp"] = int(time.time()) - 60
         elif token_case == "invalid-claims":
             del claims["sub"]
+        elif token_case == "overflowing-claims":
+            claims["exp"] = float("inf")
         elif token_case == "invalid-signature":
             signing_key = ec.generate_private_key(ec.SECP256R1())
         return jwt.encode(

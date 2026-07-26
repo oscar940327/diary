@@ -151,12 +151,16 @@
   truncated HTTP bodies and malformed `kid` metadata. The verifier classifies
   the finite external transport/decode/key-shape exception set as the same
   sanitized `503` without catching broad `Exception`.
+- The fourth spec review found that an overflowing temporal claim escaped
+  PyJWT as `OverflowError`. A fifth red-green cycle verifies this invalid claim
+  receives the same uniform `401` as other malformed, expired, claim-invalid,
+  or signature-invalid tokens.
 - Diary CI now pins Personal Website commit
   `c6592f326a03fe4ec3a25e005cd71df6d1b5d219`, replacing the intermediate
   `dc5a9d9227c244b22aac78883021f1bd30a7775b` pin.
 - Local verification:
   - `python -m mypy src tests`: 14 source files passed.
-  - Focused auth suite: all 17 tests passed.
+  - Focused auth suite: all 18 tests passed.
   - Full Diary suite: 25 tests passed; the two production-CORS cases could not
     start because an unrelated user-owned
     `python -m uvicorn main:app --reload --port 8001` process already occupied

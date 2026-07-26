@@ -86,7 +86,13 @@ class SupabaseJwtVerifier:
                 },
             )
             return AuthenticatedIdentity(user_id=UUID(claims["sub"]))
-        except (InvalidTokenError, KeyError, TypeError, ValueError) as error:
+        except (
+            InvalidTokenError,
+            KeyError,
+            OverflowError,
+            TypeError,
+            ValueError,
+        ) as error:
             raise InvalidAuthenticationToken from error
 
     async def _get_signing_keys(
