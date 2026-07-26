@@ -23,11 +23,20 @@ UNKNOWN_KID_TOKEN = (
 
 
 @contextmanager
-def _jwks_endpoint(response_body: bytes) -> Iterator[str]:
+def _jwks_endpoint(
+    response_body: bytes,
+    *,
+    declared_content_length: int | None = None,
+) -> Iterator[str]:
     class JwksHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            if declared_content_length is not None:
+                self.send_header(
+                    "Content-Length",
+                    str(declared_content_length),
+                )
             self.end_headers()
             self.wfile.write(response_body)
 
@@ -49,8 +58,13 @@ def _request_with_jwks(
     monkeypatch: MonkeyPatch,
     response_body: bytes,
     token: str | Callable[[str], str] = UNKNOWN_KID_TOKEN,
+    *,
+    declared_content_length: int | None = None,
 ) -> Response:
-    with _jwks_endpoint(response_body) as supabase_url:
+    with _jwks_endpoint(
+        response_body,
+        declared_content_length=declared_content_length,
+    ) as supabase_url:
         access_token = token(supabase_url) if callable(token) else token
         monkeypatch.setenv("DIARY_ENVIRONMENT", "test")
         monkeypatch.setenv("SUPABASE_URL", supabase_url)
@@ -196,6 +210,21 @@ def test_protected_owner_endpoint_reports_non_object_jwks_as_unavailable(
     }
 
 
+def test_protected_owner_endpoint_reports_truncated_jwks_as_unavailable(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    response = _request_with_jwks(
+        monkeypatch,
+        b'{"keys":[]}',
+        declared_content_length=100,
+    )
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Authentication service unavailable"
+    }
+
+
 @mark.parametrize(
     "jwks_body",
     [
@@ -210,6 +239,10 @@ def test_protected_owner_endpoint_reports_non_object_jwks_as_unavailable(
         ),
         (
             b'{"keys":[{"kty":"oct","k":"c2VjcmV0",'
+            b'"use":"sig","kid":["bad-metadata"]}]}'
+        ),
+        (
+            b'{"keys":[{"kty":"oct","k":"c2VjcmV0",'
             b'"use":"enc","kid":"not-for-signing"}]}'
         ),
     ],
@@ -220,6 +253,7 @@ def test_protected_owner_endpoint_reports_non_object_jwks_as_unavailable(
         "empty",
         "malformed-key",
         "malformed-key-fields",
+        "malformed-key-metadata",
         "no-usable-signing-key",
     ],
 )

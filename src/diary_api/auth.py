@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import lru_cache
+from http.client import HTTPException as HttpClientException
 from typing import Any
 from uuid import UUID
 
@@ -94,12 +95,20 @@ class SupabaseJwtVerifier:
         refresh: bool = False,
     ) -> list[PyJWK]:
         try:
-            return await asyncio.to_thread(
+            signing_keys = await asyncio.to_thread(
                 self._jwks.get_signing_keys,
                 refresh,
             )
+            if any(
+                not isinstance(key.key_id, str) or not key.key_id
+                for key in signing_keys
+            ):
+                raise AuthenticationServiceUnavailable
+            return signing_keys
         except (
             AttributeError,
+            HttpClientException,
+            OSError,
             PyJWKClientConnectionError,
             PyJWKClientError,
             PyJWKSetError,

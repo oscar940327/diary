@@ -146,14 +146,17 @@
   red-green cycle covered that shape. The next review found malformed RSA
   field types escaping as `TypeError`; a third red-green cycle now covers empty
   response bodies, invalid encoding, non-object keys, and malformed key fields.
-  The verifier classifies the finite external decode/key-shape exception set as
-  the same sanitized `503` without catching broad `Exception`.
+  The third review found mid-response transport failures, and an additional
+  audit found non-string key metadata; a fourth red-green cycle covers
+  truncated HTTP bodies and malformed `kid` metadata. The verifier classifies
+  the finite external transport/decode/key-shape exception set as the same
+  sanitized `503` without catching broad `Exception`.
 - Diary CI now pins Personal Website commit
   `c6592f326a03fe4ec3a25e005cd71df6d1b5d219`, replacing the intermediate
   `dc5a9d9227c244b22aac78883021f1bd30a7775b` pin.
 - Local verification:
   - `python -m mypy src tests`: 14 source files passed.
-  - Focused auth suite: all 15 tests passed.
+  - Focused auth suite: all 17 tests passed.
   - Full Diary suite: 25 tests passed; the two production-CORS cases could not
     start because an unrelated user-owned
     `python -m uvicorn main:app --reload --port 8001` process already occupied
