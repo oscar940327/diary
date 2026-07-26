@@ -89,3 +89,41 @@
   it is non-blocking and extracting it would broaden this review fix.
 - Ticket 03 remains unimplemented. Ticket 02 is not marked review-passed and
   still requires a fresh `$code-review` session.
+
+### 2026-07-27 - Code review verdict: failed
+
+- Fixed implementation ranges reviewed:
+  - Diary:
+    `e64a6c53206767bac79c3765681acb439bb915bc...517e73200d7154179d311c5fa79a2ef12b209c54`.
+  - Personal Website:
+    `e8e6bbe3831d91c2aca73c7f9fdf790f1dc6ccbf...c6592f326a03fe4ec3a25e005cd71df6d1b5d219`.
+- Standards verdict: passed with zero hard findings. One non-blocking
+  Duplicated Code judgement remains in the acceptance/system service
+  orchestration helpers.
+- Spec verdict: failed with one blocking finding. `SupabaseJwtVerifier`
+  converts every generic `PyJWKClientError` into an invalid token and therefore
+  a `401`. With the installed PyJWT, a JWKS response that is not a JSON object
+  or contains no usable signing key also raises `PyJWKClientError`; those
+  invalid-set failures must return the sanitized authentication-service `503`
+  required by this ticket. The existing test covers an unreachable JWKS
+  endpoint but not these invalid-JWKS responses.
+- The other latest review findings are resolved: the database-enforced
+  singleton owner registry is the sole owner source, registry failures fail
+  closed, RLS remains independent, and the frontend preserves valid sessions
+  during protected-access outages while rejecting stale results.
+- Full local verification on the implementation SHAs passed:
+  - `python -m mypy src tests`: 14 files passed.
+  - `python -m pytest -vv`: all 18 tests passed.
+  - `npm.cmd run supabase -- db lint --level warning`: no schema errors.
+  - Personal Website typecheck, all 7 Playwright tests, production build, and
+    preserved-site build verification passed.
+- GitHub Actions were green on both implementation SHAs: Diary Backend checks
+  run `30217972628`, Website checks and Pages run `30217977607`, and Pages
+  deployment run `30217977145` all concluded successfully.
+- CI caveat: Diary CI still checks out Personal Website
+  `dc5a9d9227c244b22aac78883021f1bd30a7775b`, not the final Website
+  implementation SHA. The complete local cross-repository suite did use
+  `c6592f326a03fe4ec3a25e005cd71df6d1b5d219`.
+- Ticket 02 is not formally review-passed. Ticket 03 remains unimplemented and
+  must not start until the blocking JWKS classification finding is fixed and a
+  fresh review passes.
