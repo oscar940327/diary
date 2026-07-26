@@ -43,14 +43,37 @@ no production credential.
 
 ## Verify
 
-Backend:
+Install the backend test dependencies and Chromium once:
+
+```powershell
+python -m pip install -e ".[dev]"
+python -m playwright install chromium
+```
+
+The browser acceptance test needs the Ticket 01 frontend checkout and its
+locked Node dependencies. Set its path explicitly so the same command works
+regardless of where the two repositories live:
+
+```powershell
+npm.cmd ci --prefix "E:\personal_website"
+$env:DIARY_FRONTEND_REPOSITORY = "E:\personal_website"
+python -m pytest tests\acceptance
+```
+
+That pytest command starts this repository's Uvicorn service on port `8000`
+and the frontend repository's Vite service on port `4173`, opens a real
+Chromium browser, navigates from HOME to DIARY, and waits for the unmocked
+`/diary-api/health` request to pass through Vite to FastAPI `/health`. The test
+stops both services when it finishes.
+
+Run the complete backend suite:
 
 ```powershell
 python -m pytest
 python -m mypy src tests
 ```
 
-Frontend, from `personal_website`:
+Run the complete frontend suite from `personal_website`:
 
 ```powershell
 npm.cmd run typecheck
@@ -58,3 +81,9 @@ npm.cmd run test:e2e
 npm.cmd run build
 npm.cmd run verify:build
 ```
+
+Backend CI checks out the public frontend repository at the fixed Ticket 01
+commit, installs both repositories' dependencies, installs Chromium, and runs
+the complete backend suite. Keeping the cross-repository orchestration in the
+backend workflow means CI does not need a token that can read the private
+Diary repository from another repository.
