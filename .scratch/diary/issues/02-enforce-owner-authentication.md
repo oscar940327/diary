@@ -127,3 +127,32 @@
 - Ticket 02 is not formally review-passed. Ticket 03 remains unimplemented and
   must not start until the blocking JWKS classification finding is fixed and a
   fresh review passes.
+
+### 2026-07-27 - JWKS classification finding implementation
+
+- TDD red evidence: a real HTTP JWKS endpoint returning a JSON array produced
+  the uniform `401`; the new protected-API test expected the sanitized
+  authentication-service `503`.
+- `SupabaseJwtVerifier` now validates the signing-key set separately from
+  matching the token `kid`. An unreachable, non-object, malformed, empty, or
+  unusable JWKS fails closed with the sanitized `503`; a valid JWKS that does
+  not contain the requested `kid` receives the uniform `401`.
+- Public HTTP classification tests cover malformed, expired, missing-claim,
+  and invalid-signature tokens with the same `401` body and challenge header.
+  The pre-existing real-system malformed and expired token coverage remains
+  active.
+- Diary CI now pins Personal Website commit
+  `c6592f326a03fe4ec3a25e005cd71df6d1b5d219`, replacing the intermediate
+  `dc5a9d9227c244b22aac78883021f1bd30a7775b` pin.
+- Local verification:
+  - `python -m mypy src tests`: 14 source files passed.
+  - Focused auth suite: all 11 tests passed.
+  - Full Diary suite: 25 tests passed; the two production-CORS cases could not
+    start because an unrelated user-owned
+    `python -m uvicorn main:app --reload --port 8001` process already occupied
+    their fixed local test port. The process was inspected but not stopped.
+  - Supabase warning-level database lint reported no schema errors.
+  - Pinned Personal Website typecheck, all 7 Playwright tests, production
+    build, and preserved-site build verification passed.
+- A fresh review and clean-runner GitHub Actions verification remain required.
+  Ticket 03 remains unimplemented.

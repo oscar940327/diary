@@ -3,13 +3,14 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import lru_cache
+from json import JSONDecodeError
 from typing import Any
 from uuid import UUID
 
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jwt import PyJWKClient
+from jwt import PyJWK, PyJWKClient
 from jwt.exceptions import (
     InvalidTokenError,
     PyJWKClientConnectionError,
@@ -56,15 +57,22 @@ class SupabaseJwtVerifier:
         if algorithm not in ALLOWED_JWT_ALGORITHMS:
             raise InvalidAuthenticationToken
 
-        try:
-            signing_key = await asyncio.to_thread(
-                self._jwks.get_signing_key_from_jwt,
-                token,
+        kid = header.get("kid")
+        if not isinstance(kid, str) or not kid:
+            raise InvalidAuthenticationToken
+
+        signing_keys = await self._get_signing_keys()
+        signing_key = self._jwks.match_kid(signing_keys, kid)
+        if signing_key is None:
+            refreshed_signing_keys = await self._get_signing_keys(
+                refresh=True
             )
-        except (PyJWKClientConnectionError, PyJWKSetError) as error:
-            raise AuthenticationServiceUnavailable from error
-        except PyJWKClientError as error:
-            raise InvalidAuthenticationToken from error
+            signing_key = self._jwks.match_kid(
+                refreshed_signing_keys,
+                kid,
+            )
+        if signing_key is None:
+            raise InvalidAuthenticationToken
 
         try:
             claims: dict[str, Any] = jwt.decode(
@@ -80,6 +88,24 @@ class SupabaseJwtVerifier:
             return AuthenticatedIdentity(user_id=UUID(claims["sub"]))
         except (InvalidTokenError, KeyError, TypeError, ValueError) as error:
             raise InvalidAuthenticationToken from error
+
+    async def _get_signing_keys(
+        self,
+        *,
+        refresh: bool = False,
+    ) -> list[PyJWK]:
+        try:
+            return await asyncio.to_thread(
+                self._jwks.get_signing_keys,
+                refresh,
+            )
+        except (
+            JSONDecodeError,
+            PyJWKClientConnectionError,
+            PyJWKClientError,
+            PyJWKSetError,
+        ) as error:
+            raise AuthenticationServiceUnavailable from error
 
 
 @lru_cache
