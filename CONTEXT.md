@@ -336,7 +336,7 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 02 owner authentication has been implemented with TDD and awaits
-`code-review` in a new session. Review the fixed Ticket 02 implementation
-range before treating the ticket as complete. Do not begin Ticket 03 unless
-that review passes with no unresolved serious finding.
+Ticket 02 owner authentication is complete. Its JWKS classification follow-up
+was implemented with TDD, passed fresh two-axis review with no unresolved
+serious finding, and passed GitHub Actions on the final implementation SHA.
+Ticket 03 remains unimplemented and is the next dependency-ready ticket.

@@ -170,3 +170,23 @@
     build, and preserved-site build verification passed.
 - A fresh review and clean-runner GitHub Actions verification remain required.
   Ticket 03 remains unimplemented.
+
+### 2026-07-27 - JWKS classification review and CI verdict
+
+- Fresh two-axis review covered
+  `9a579af032f7d7404d8d605ae2bf21e38ba375ac...fd99924153a36e1fc4c00a1f18ca5f658bb72b3d`.
+- Standards passed with zero hard findings. One low-severity Duplicated Code
+  judgement remains for explicit `401`/`503` assertions in the security tests;
+  they remain inline so each test shows its complete response contract.
+- Spec passed with zero remaining findings after five verified red-green
+  cycles. Unavailable, truncated, non-object, malformed, empty, invalidly
+  encoded, metadata-invalid, and unusable JWKS responses are sanitized `503`;
+  a valid JWKS with an unknown token `kid` is uniform `401`; malformed,
+  expired, claim-invalid, overflow-invalid, and signature-invalid tokens are
+  uniform `401`.
+- GitHub Actions Backend checks run `30220010660` completed successfully for
+  `fd99924153a36e1fc4c00a1f18ca5f658bb72b3d` on a clean runner, including all
+  34 collected Diary tests and the Personal Website pin
+  `c6592f326a03fe4ec3a25e005cd71df6d1b5d219`.
+- Ticket 02 is review-passed. Ticket 03 remains unimplemented and was not
+  started in this work.
