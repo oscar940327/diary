@@ -39,6 +39,8 @@ NON_OWNER_EMAIL = "not-owner@diary.test"
 MAGIC_LINK_PATTERN = re.compile(
     r'href="(http://127\.0\.0\.1:54321/auth/v1/verify\?[^"]+)"'
 )
+MAGIC_LINK_RATE_LIMIT_RETRY_SECONDS = 3.0
+MAGIC_LINK_RATE_LIMIT_POLL_SECONDS = 0.1
 
 
 @dataclass(frozen=True)
@@ -178,16 +180,37 @@ def provisioned_users(local_supabase: LocalSupabase) -> LocalSupabase:
 
 
 def _request_magic_link(settings: LocalSupabase, email: str) -> None:
-    response = httpx.post(
-        f"{settings.api_url}/auth/v1/otp",
-        headers=_public_headers(settings),
-        json={
-            "email": email,
-            "create_user": False,
-        },
-        timeout=10,
-    )
-    assert response.status_code == 200, response.text
+    deadline = time.monotonic() + MAGIC_LINK_RATE_LIMIT_RETRY_SECONDS
+
+    while True:
+        response = httpx.post(
+            f"{settings.api_url}/auth/v1/otp",
+            headers=_public_headers(settings),
+            json={
+                "email": email,
+                "create_user": False,
+            },
+            timeout=10,
+        )
+        if response.status_code == 200:
+            return
+
+        try:
+            error_code = response.json().get("error_code")
+        except (TypeError, ValueError):
+            error_code = None
+
+        if (
+            response.status_code != 429
+            or error_code != "over_email_send_rate_limit"
+            or time.monotonic() >= deadline
+        ):
+            pytest.fail(
+                "Local Supabase did not issue a Magic Link: "
+                f"{response.status_code} {response.text}"
+            )
+
+        time.sleep(MAGIC_LINK_RATE_LIMIT_POLL_SECONDS)
 
 
 def _mail_recipient(message: object) -> str:

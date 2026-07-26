@@ -30,3 +30,23 @@
 - No production credential was used or committed.
 - Ticket 02 awaits the required separate-session code review. Ticket 03 has
   not started.
+
+### 2026-07-27 - Blocking review fix
+
+- Reproduced the review failure with the complete real system suite:
+  13 tests passed and 2 setup errors because a second owner Magic Link request
+  received GoTrue `429 over_email_send_rate_limit`.
+- The test fixture now retries only that exact rate-limit response for at most
+  three seconds, polling every 100 milliseconds. Every other response still
+  fails immediately, and the one-second Supabase email safety interval remains
+  enabled.
+- The real mobile browser still requests `/auth/v1/otp`, opens the Mailpit
+  Magic Link, restores its session after reload, and signs out. The protected
+  API and RLS checks still use real Supabase tokens over HTTP.
+- After the fix, mypy passed, all 15 Diary tests passed, Supabase warning-level
+  database lint reported no schema errors, and all Personal Website
+  typecheck, 5 Playwright tests, production build, and build verification
+  passed.
+- Personal Website remained at
+  `dc5a9d9227c244b22aac78883021f1bd30a7775b`. Ticket 03 remains unimplemented.
+  Ticket 02 still requires a new separate-session code review.
