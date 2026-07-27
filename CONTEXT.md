@@ -336,12 +336,13 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 03 capture and Today history is implemented. Its final product changes
-passed fixed-range Standards and Spec review with no findings, including the
-follow-up verification for the Asia/Taipei midnight timer cleanup. The Diary
-CI now pins the final reviewed Personal Website commit
+Ticket 03 capture and Today history is implemented. Its final product review
+passed with no Spec findings and one non-blocking Standards judgment call
+about repeated adjacent Playwright setup. The separate Asia/Taipei midnight
+timer cleanup follow-up then passed its final verification review with no
+Standards or Spec findings. The pushed Diary CI follow-up at `0e5f577` pins
+the final reviewed Personal Website commit
 `914407d090b54e2037810238e34c02cc9709df2c` so the real cross-repository suite
 exercises Ticket 03 instead of the Ticket 02 frontend. Before Ticket 04 begins,
-push this CI/documentation follow-up, require both repositories' latest GitHub
-Actions to pass, and review this final follow-up range. Ticket 04 has not
-started.
+require both repositories' latest GitHub Actions to pass and review the
+documentation correction range. Ticket 04 has not started.

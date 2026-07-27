@@ -203,3 +203,45 @@
   or worker, AI Draft, RAG, or LLM work was added.
 - Ticket 03 is review-passed and can be treated as complete. Ticket 04 has
   not started.
+
+### 2026-07-28 - CI/Documentation Follow-up Review (Blocked)
+
+- Fixed review range:
+  - Diary:
+    `85141059a3f3fe0f3d06f9a61a0e4b37df673d4d...0e5f5776c148fe991f922aee6cc7df35a3df3c92`
+- Verdict: **Blocked**.
+  - Standards: **Passed**, 0 findings.
+  - Spec: **Failed**, 2 findings.
+- Standards found no documented-standard violations or judgment-call smells.
+  The range is narrowly limited to the reviewed Website pin in Diary CI and
+  the corresponding project-status documentation.
+- Spec finding: `CONTEXT.md` says the final product changes passed the
+  fixed-range Standards and Spec review "with no findings," but the recorded
+  product review had no Spec findings and one non-blocking Standards judgment
+  call about repeated adjacent Playwright setup. The later 0/0 Final
+  Verification Review covered only the separate Website timer-cleanup
+  follow-up range, so the current wording conflates the two review results.
+- Spec finding: `CONTEXT.md` still lists pushing this CI/documentation
+  follow-up as a future gate. At review time both `HEAD` and `origin/main`
+  resolve to `0e5f5776c148fe991f922aee6cc7df35a3df3c92`, so the push is already
+  complete. The remaining GitHub Actions and review gates can be recorded
+  without listing the completed push as pending.
+- Confirmed cleanly:
+  - Diary CI checks out Personal Website SHA
+    `914407d090b54e2037810238e34c02cc9709df2c`, which Ticket 03 records as
+    review-passed.
+  - The reviewed range changes only `.github/workflows/ci.yml` and
+    `CONTEXT.md`; it contains no product code or Ticket 04 work.
+  - `git diff --check` passes for the fixed range.
+- No product code was modified and Ticket 04 was not started.
+
+### 2026-07-28 - CI/Documentation Review Findings Resolved
+
+- `CONTEXT.md` now distinguishes the passed product review, which had one
+  non-blocking Standards judgment call, from the separate Website
+  timer-cleanup verification review, which had no Standards or Spec findings.
+- The project status now records that Diary CI follow-up `0e5f577` is already
+  pushed instead of listing that completed push as pending.
+- The remaining gates before Ticket 04 are both repositories' latest GitHub
+  Actions and a fresh review of this documentation correction range.
+- No product code was modified and Ticket 04 was not started.
