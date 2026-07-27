@@ -336,9 +336,12 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 03 capture and Today history has been implemented with TDD against real
-Supabase/PostgREST/FastAPI HTTP and browser seams. Local type checking, all 40
-Diary tests, Supabase database lint, all 9 Personal Website Playwright tests,
-the production build, and preserved-site build verification pass. It is not
-yet review-passed and must receive a fresh two-axis review from the fixed
-Ticket 03 base before Ticket 04 begins.
+Ticket 03 capture and Today history is implemented. Its final product changes
+passed fixed-range Standards and Spec review with no findings, including the
+follow-up verification for the Asia/Taipei midnight timer cleanup. The Diary
+CI now pins the final reviewed Personal Website commit
+`914407d090b54e2037810238e34c02cc9709df2c` so the real cross-repository suite
+exercises Ticket 03 instead of the Ticket 02 frontend. Before Ticket 04 begins,
+push this CI/documentation follow-up, require both repositories' latest GitHub
+Actions to pass, and review this final follow-up range. Ticket 04 has not
+started.

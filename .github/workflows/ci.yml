@@ -19,11 +19,11 @@ jobs:
         with:
           path: diary
 
-      - name: Check out Ticket 02 frontend
+      - name: Check out Ticket 03 frontend
         uses: actions/checkout@v6
         with:
           repository: oscar940327/my-personal-website
-          ref: c6592f326a03fe4ec3a25e005cd71df6d1b5d219
+          ref: 914407d090b54e2037810238e34c02cc9709df2c
           path: personal-website
           persist-credentials: false
 
