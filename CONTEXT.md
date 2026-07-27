@@ -336,7 +336,9 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 02 owner authentication is complete. Its JWKS classification follow-up
-was implemented with TDD, passed fresh two-axis review with no unresolved
-serious finding, and passed GitHub Actions on the final implementation SHA.
-Ticket 03 remains unimplemented and is the next dependency-ready ticket.
+Ticket 03 capture and Today history has been implemented with TDD against real
+Supabase/PostgREST/FastAPI HTTP and browser seams. Local type checking, all 40
+Diary tests, Supabase database lint, all 9 Personal Website Playwright tests,
+the production build, and preserved-site build verification pass. It is not
+yet review-passed and must receive a fresh two-axis review from the fixed
+Ticket 03 base before Ticket 04 begins.

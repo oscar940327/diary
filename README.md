@@ -58,6 +58,16 @@ and expiry, and the token subject matches the single row in
 that registry with the backend-only secret while PostgreSQL RLS independently
 checks the caller's Supabase identity.
 
+Authenticated capture uses `POST /entries` with a nonblank
+`X-Idempotency-Key` header and JSON `original_content`. An optional,
+offset-aware `entry_at` records a late or backdated Entry; otherwise the
+database capture time is used. A successful first request returns `201`, while
+repeating the same owner/key returns the original Entry with `200`. The Entry,
+immutable first Entry Revision, and durable pending processing obligation are
+committed atomically. `GET /entries/today` returns the owner's current
+`Asia/Taipei` date group. Ticket 03 creates the obligation only; no AI or queue
+worker runs yet.
+
 In the sibling frontend repository, copy `.env.example` to `.env.local`, use
 the local `API_URL` and `PUBLISHABLE_KEY` printed by Supabase, then run:
 

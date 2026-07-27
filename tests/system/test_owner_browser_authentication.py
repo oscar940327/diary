@@ -25,17 +25,52 @@ def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
     expect(
         page.get_by_role("heading", name="Diary", exact=True)
     ).to_be_visible()
-    expect(page.get_by_role("status")).to_contain_text(
-        "Authenticated Diary is ready"
-    )
+    expect(
+        page.get_by_text(
+            "Authenticated Diary is ready.",
+            exact=True,
+        )
+    ).to_be_visible()
     expect(
         page.get_by_role("button", name="Sign out")
     ).to_be_visible()
+    expect(
+        page.get_by_role("heading", name="Today")
+    ).to_be_visible()
+
+    page.get_by_role("button", name="New Entry").click()
+    page.get_by_label("Original Content").fill(
+        "Mobile system capture keeps the complete Original Content."
+    )
+    page.get_by_role("button", name="Save Entry").click()
+    expect(
+        page.get_by_text(
+            "Mobile system capture keeps the complete Original Content.",
+            exact=True,
+        )
+    ).to_be_visible()
+    saved_entry = page.locator("article").filter(
+        has_text=(
+            "Mobile system capture keeps the complete Original Content."
+        )
+    )
+    expect(
+        saved_entry.get_by_text("AI processing pending")
+    ).to_be_visible()
 
     page.reload()
-    expect(page.get_by_role("status")).to_contain_text(
-        "Authenticated Diary is ready"
-    )
+    expect(
+        page.get_by_text(
+            "Authenticated Diary is ready.",
+            exact=True,
+        )
+    ).to_be_visible()
+    expect(
+        page.get_by_text(
+            "Mobile system capture keeps the complete Original Content.",
+            exact=True,
+        )
+    ).to_be_visible()
 
     page.get_by_role("button", name="Sign out").click()
     expect(
