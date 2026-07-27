@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from http.client import HTTPException as HttpClientException
 from typing import Any
@@ -27,6 +27,7 @@ bearer = HTTPBearer(auto_error=False)
 @dataclass(frozen=True)
 class AuthenticatedIdentity:
     user_id: UUID
+    access_token: str = field(repr=False)
 
 
 class InvalidAuthenticationToken(Exception):
@@ -85,7 +86,10 @@ class SupabaseJwtVerifier:
                     "require": ["aud", "exp", "iss", "sub"],
                 },
             )
-            return AuthenticatedIdentity(user_id=UUID(claims["sub"]))
+            return AuthenticatedIdentity(
+                user_id=UUID(claims["sub"]),
+                access_token=token,
+            )
         except (
             InvalidTokenError,
             KeyError,

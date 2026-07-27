@@ -1,6 +1,5 @@
 from datetime import UTC, date, datetime
 from typing import Annotated, Literal, TypedDict
-from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import (
@@ -96,7 +95,7 @@ async def require_owner(
         require_authenticated_identity
     ),
     registry: SupabaseOwnerRegistry = Depends(owner_registry),
-) -> str:
+) -> AuthenticatedIdentity:
     try:
         owner_id = await registry.owner_id()
     except OwnerRegistryUnavailable as error:
@@ -105,7 +104,7 @@ async def require_owner(
     if identity.user_id != owner_id:
         raise authentication_required()
 
-    return str(identity.user_id)
+    return identity
 
 
 def owner_authorization_service_unavailable() -> HTTPException:
@@ -132,11 +131,11 @@ def health() -> HealthResponse:
 
 @app.get("/auth/me")
 def authenticated_owner(
-    owner_id: str = Depends(require_owner),
+    owner: AuthenticatedIdentity = Depends(require_owner),
 ) -> OwnerResponse:
     return {
         "status": "authenticated",
-        "owner_id": owner_id,
+        "owner_id": str(owner.user_id),
     }
 
 
@@ -157,12 +156,12 @@ async def create_entry(
             pattern=r".*\S.*",
         ),
     ],
-    owner_id: str = Depends(require_owner),
+    owner: AuthenticatedIdentity = Depends(require_owner),
     store: SupabaseEntryStore = Depends(entry_store),
 ) -> EntryRecord:
     try:
         entry, was_created = await store.create(
-            owner_id=UUID(owner_id),
+            access_token=owner.access_token,
             original_content=request.original_content,
             entry_at=request.entry_at,
             idempotency_key=idempotency_key,
@@ -180,13 +179,13 @@ async def create_entry(
     response_model=EntryDateGroup,
 )
 async def list_today_entries(
-    owner_id: str = Depends(require_owner),
+    owner: AuthenticatedIdentity = Depends(require_owner),
     store: SupabaseEntryStore = Depends(entry_store),
 ) -> EntryDateGroup:
     owner_date = datetime.now(ZoneInfo("Asia/Taipei")).date()
     try:
         entries = await store.list_for_date(
-            owner_id=UUID(owner_id),
+            access_token=owner.access_token,
             owner_date=owner_date,
         )
     except EntryStoreUnavailable as error:

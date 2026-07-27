@@ -307,6 +307,140 @@ def test_rls_protects_entry_revision_and_processing_obligation(
     }
 
 
+def test_fastapi_entry_mutation_uses_owner_token_for_postgres_rls(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+    entry_insert_rls_denial: None,
+) -> None:
+    response = httpx.post(
+        f"{diary_api}/entries",
+        headers={
+            **_owner_headers(owner_access_token),
+            "X-Idempotency-Key": "fastapi-rls-defense",
+        },
+        json={
+            "original_content": (
+                "Synthetic Entry that PostgreSQL RLS must reject."
+            )
+        },
+    )
+
+    assert response.status_code == 503
+    stored_response = httpx.get(
+        (
+            f"{local_supabase.api_url}/rest/v1/entries"
+            "?idempotency_key=eq.fastapi-rls-defense&select=id"
+        ),
+        headers=_postgrest_headers(
+            local_supabase,
+            owner_access_token,
+        ),
+    )
+    assert stored_response.status_code == 200
+    assert stored_response.json() == []
+
+
+def test_fastapi_entry_mutations_fail_closed_at_owner_boundary(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+    non_owner_access_token: str,
+) -> None:
+    denied_requests = (
+        (
+            non_owner_access_token,
+            "non-owner-entry-mutation",
+        ),
+        (
+            "definitely-not-a-jwt",
+            "wrong-token-entry-mutation",
+        ),
+    )
+    for access_token, idempotency_key in denied_requests:
+        response = httpx.post(
+            f"{diary_api}/entries",
+            headers={
+                **_owner_headers(access_token),
+                "X-Idempotency-Key": idempotency_key,
+            },
+            json={
+                "original_content": (
+                    "Synthetic Entry rejected by the FastAPI owner gate."
+                )
+            },
+        )
+        assert response.status_code == 401
+        assert response.json() == {
+            "detail": "Authentication required"
+        }
+
+    owner_registry_url = (
+        f"{local_supabase.api_url}/rest/v1/diary_owners"
+    )
+    admin_headers = {
+        "apikey": local_supabase.service_role_key,
+        "Authorization": (
+            f"Bearer {local_supabase.service_role_key}"
+        ),
+        "Content-Type": "application/json",
+    }
+    delete_response = httpx.delete(
+        (
+            f"{owner_registry_url}?user_id=eq."
+            "61c2f4ca-2fab-4b50-a0cf-12aac0ec0b24"
+        ),
+        headers=admin_headers,
+    )
+    assert delete_response.status_code == 204
+
+    try:
+        missing_registry_response = httpx.post(
+            f"{diary_api}/entries",
+            headers={
+                **_owner_headers(owner_access_token),
+                "X-Idempotency-Key": "missing-registry-entry-mutation",
+            },
+            json={
+                "original_content": (
+                    "Synthetic Entry rejected without owner registry."
+                )
+            },
+        )
+    finally:
+        restore_response = httpx.post(
+            owner_registry_url,
+            headers=admin_headers,
+            json={
+                "user_id": (
+                    "61c2f4ca-2fab-4b50-a0cf-12aac0ec0b24"
+                ),
+            },
+        )
+        assert restore_response.status_code == 201
+
+    assert missing_registry_response.status_code == 503
+    assert missing_registry_response.json() == {
+        "detail": "Owner authorization service unavailable"
+    }
+    stored_response = httpx.get(
+        (
+            f"{local_supabase.api_url}/rest/v1/entries"
+            "?idempotency_key=in.("
+            "non-owner-entry-mutation,"
+            "wrong-token-entry-mutation,"
+            "missing-registry-entry-mutation"
+            ")&select=id"
+        ),
+        headers=_postgrest_headers(
+            local_supabase,
+            owner_access_token,
+        ),
+    )
+    assert stored_response.status_code == 200
+    assert stored_response.json() == []
+
+
 def test_entry_revisions_cannot_be_overwritten(
     diary_api: str,
     local_supabase: SupabaseSettings,

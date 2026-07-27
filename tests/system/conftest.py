@@ -10,7 +10,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html import unescape
 from pathlib import Path
 from typing import IO, cast
@@ -47,9 +47,14 @@ MAGIC_LINK_RATE_LIMIT_POLL_SECONDS = 0.1
 class LocalSupabase:
     api_url: str
     publishable_key: str
-    secret_key: str
-    service_role_key: str
+    secret_key: str = field(repr=False)
+    service_role_key: str = field(repr=False)
     mailpit_url: str
+
+
+class SensitiveAccessToken(str):
+    def __repr__(self) -> str:
+        return "<redacted access token>"
 
 
 def _supabase_executable() -> str:
@@ -295,12 +300,16 @@ def owner_magic_link(
 
 @pytest.fixture(scope="session")
 def owner_access_token(provisioned_users: LocalSupabase) -> str:
-    return _sign_in_with_magic_link(provisioned_users, OWNER_EMAIL)
+    return SensitiveAccessToken(
+        _sign_in_with_magic_link(provisioned_users, OWNER_EMAIL)
+    )
 
 
 @pytest.fixture(scope="session")
 def non_owner_access_token(provisioned_users: LocalSupabase) -> str:
-    return _sign_in_with_magic_link(provisioned_users, NON_OWNER_EMAIL)
+    return SensitiveAccessToken(
+        _sign_in_with_magic_link(provisioned_users, NON_OWNER_EMAIL)
+    )
 
 
 def _local_auth_signing_key() -> dict[str, object]:
@@ -337,19 +346,66 @@ def expired_owner_access_token(
             json.dumps(signing_jwk)
         ),
     )
-    return jwt.encode(
-        {
-            "aud": "authenticated",
-            "exp": now - 60,
-            "iat": now - 120,
-            "iss": f"{provisioned_users.api_url}/auth/v1",
-            "role": "authenticated",
-            "sub": str(OWNER_ID),
-        },
-        private_key,
-        algorithm="ES256",
-        headers={"kid": signing_jwk["kid"]},
+    return SensitiveAccessToken(
+        jwt.encode(
+            {
+                "aud": "authenticated",
+                "exp": now - 60,
+                "iat": now - 120,
+                "iss": f"{provisioned_users.api_url}/auth/v1",
+                "role": "authenticated",
+                "sub": str(OWNER_ID),
+            },
+            private_key,
+            algorithm="ES256",
+            headers={"kid": signing_jwk["kid"]},
+        )
     )
+
+
+def _execute_local_database_sql(statement: str) -> None:
+    result = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "supabase_db_diary",
+            "psql",
+            "--username",
+            "postgres",
+            "--dbname",
+            "postgres",
+            "--set",
+            "ON_ERROR_STOP=1",
+            "--command",
+            statement,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        pytest.fail(
+            "Could not configure the local RLS system-test boundary: "
+            f"{result.stderr.strip()}"
+        )
+
+
+@pytest.fixture
+def entry_insert_rls_denial(
+    provisioned_users: LocalSupabase,
+) -> Iterator[None]:
+    policy_name = "system test denies entry inserts"
+    _execute_local_database_sql(
+        f'create policy "{policy_name}" '
+        "on public.entries as restrictive "
+        "for insert to authenticated with check (false);"
+    )
+    try:
+        yield
+    finally:
+        _execute_local_database_sql(
+            f'drop policy "{policy_name}" on public.entries;'
+        )
 
 
 def _wait_until_ready(
@@ -435,6 +491,9 @@ def diary_api(
             "SUPABASE_SECRET_KEY": (
                 provisioned_users.secret_key
             ),
+            "SUPABASE_PUBLISHABLE_KEY": (
+                provisioned_users.publishable_key
+            ),
             "SUPABASE_URL": provisioned_users.api_url,
         }
     )
@@ -472,6 +531,9 @@ def production_diary_api(
             ),
             "SUPABASE_SECRET_KEY": (
                 provisioned_users.secret_key
+            ),
+            "SUPABASE_PUBLISHABLE_KEY": (
+                provisioned_users.publishable_key
             ),
             "SUPABASE_URL": provisioned_users.api_url,
         }

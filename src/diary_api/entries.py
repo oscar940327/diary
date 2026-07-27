@@ -8,8 +8,7 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, ConfigDict
 
-from diary_api.config import OwnerRegistrySettings
-from diary_api.owner_registry import owner_registry_settings
+from diary_api.config import EntryStoreSettings
 
 
 class EntryStoreUnavailable(Exception):
@@ -36,13 +35,13 @@ class EntryRecord(BaseModel):
 
 
 class SupabaseEntryStore:
-    def __init__(self, settings: OwnerRegistrySettings) -> None:
+    def __init__(self, settings: EntryStoreSettings) -> None:
         self._settings = settings
 
     async def create(
         self,
         *,
-        owner_id: UUID,
+        access_token: str,
         original_content: str,
         entry_at: datetime | None,
         idempotency_key: str,
@@ -50,7 +49,6 @@ class SupabaseEntryStore:
         rows = await self._rpc(
             "create_diary_entry",
             {
-                "p_owner_id": str(owner_id),
                 "p_original_content": original_content,
                 "p_entry_at": (
                     entry_at.isoformat()
@@ -59,6 +57,7 @@ class SupabaseEntryStore:
                 ),
                 "p_idempotency_key": idempotency_key,
             },
+            access_token=access_token,
         )
         if len(rows) != 1:
             raise EntryStoreUnavailable
@@ -76,15 +75,15 @@ class SupabaseEntryStore:
     async def list_for_date(
         self,
         *,
-        owner_id: UUID,
+        access_token: str,
         owner_date: date,
     ) -> list[EntryRecord]:
         rows = await self._rpc(
             "list_diary_entries_for_date",
             {
-                "p_owner_id": str(owner_id),
                 "p_owner_date": owner_date.isoformat(),
             },
+            access_token=access_token,
         )
         try:
             return [
@@ -98,6 +97,8 @@ class SupabaseEntryStore:
         self,
         name: str,
         payload: dict[str, object],
+        *,
+        access_token: str,
     ) -> list[dict[str, Any]]:
         try:
             async with httpx.AsyncClient(timeout=5) as client:
@@ -108,10 +109,8 @@ class SupabaseEntryStore:
                     ),
                     headers={
                         "Accept": "application/json",
-                        "apikey": self._settings.secret_key,
-                        "Authorization": (
-                            f"Bearer {self._settings.secret_key}"
-                        ),
+                        "apikey": self._settings.publishable_key,
+                        "Authorization": f"Bearer {access_token}",
                         "Content-Type": "application/json",
                     },
                     json=payload,
@@ -135,4 +134,4 @@ class SupabaseEntryStore:
 
 @lru_cache
 def entry_store() -> SupabaseEntryStore:
-    return SupabaseEntryStore(owner_registry_settings())
+    return SupabaseEntryStore(EntryStoreSettings.from_environment())

@@ -121,3 +121,20 @@ class OwnerRegistrySettings:
             ).rstrip("/"),
             secret_key=_required_environment("SUPABASE_SECRET_KEY"),
         )
+
+
+@dataclass(frozen=True)
+class EntryStoreSettings:
+    supabase_url: str
+    publishable_key: str
+
+    @classmethod
+    def from_environment(cls) -> EntryStoreSettings:
+        return cls(
+            supabase_url=_required_environment(
+                "SUPABASE_URL"
+            ).rstrip("/"),
+            publishable_key=_required_environment(
+                "SUPABASE_PUBLISHABLE_KEY"
+            ),
+        )
