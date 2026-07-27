@@ -336,13 +336,11 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 03 capture and Today history is implemented. Its final product review
-passed with no Spec findings and one non-blocking Standards judgment call
-about repeated adjacent Playwright setup. The separate Asia/Taipei midnight
-timer cleanup follow-up then passed its final verification review with no
-Standards or Spec findings. The pushed Diary CI follow-up at `0e5f577` pins
-the final reviewed Personal Website commit
-`914407d090b54e2037810238e34c02cc9709df2c` so the real cross-repository suite
-exercises Ticket 03 instead of the Ticket 02 frontend. Before Ticket 04 begins,
-require both repositories' latest GitHub Actions to pass and review the
-documentation correction range. Ticket 04 has not started.
+Ticket 03 capture and Today history is complete. Its product, timer-cleanup,
+and final CI/documentation correction ranges passed their required reviews;
+the one product-review Standards judgment call was non-blocking, and the final
+correction review had no Standards or Spec findings. GitHub Actions passed for
+Diary commit `d3bbdb288168c663e0aeb7df23afbf1ca1be149d` and Personal Website
+commit `914407d090b54e2037810238e34c02cc9709df2c`. Diary CI pins that reviewed
+Website commit, so the real cross-repository suite exercises Ticket 03.
+Ticket 04 is now the next dependency-ready ticket and has not started.
