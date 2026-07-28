@@ -255,3 +255,122 @@ fixes and a new fixed-range review before Ticket 05 is ready.
     completed successfully.
 - This is an implementation and verification record, not a Passed verdict.
   Ticket 04 still requires a fresh fixed-range code-review session.
+
+### 2026-07-29 - New fixed-range code review passed
+
+- Review verdict: **PASSED**.
+  - Standards: **PASS** with no blocking finding, one non-blocking
+    documented-standard finding, and two non-blocking judgement findings.
+  - Spec: **PASS** with no finding.
+  - Both review axes are free of blocking findings, so Ticket 04 passes the
+    required new-session code review.
+- Fixed review ranges:
+  - Diary:
+    `62215e1fa1d96331fa4c6d982311dd32ee05e71c...fa774739a482254c1f7d1b0d9b655dd2de358776`
+  - Personal Website:
+    `914407d090b54e2037810238e34c02cc9709df2c...22326dea27c35fb69852b3a5c5b1cf731d9546aa`
+- Both endpoints resolved, both three-dot diffs were non-empty, and both
+  `git diff --check` commands passed. The Diary review ran from later
+  documentation-only HEAD `c52c043fa95fb0526325d4586c6f0acfe6f43483`;
+  every production and test path was identical to fixed endpoint
+  `fa774739a482254c1f7d1b0d9b655dd2de358776`. Personal Website HEAD was the
+  fixed endpoint.
+
+#### Standards findings
+
+- **Low, non-blocking - documented-standard breach:** Diary
+  `CONTEXT.md:343-347` still says CI pins Personal Website `5787850...` and
+  awaits the first review, while `.github/workflows/ci.yml:22-27` pins the
+  repaired `22326de...` endpoint and Ticket Comments record the prior failed
+  review. This leaves required domain documentation stale relative to
+  `docs/agents/development-workflow.md:11` and
+  `docs/agents/domain.md:3,18`. The review records the discrepancy but does
+  not edit that file in this review session.
+- **Low, non-blocking judgement - Speculative Generality:** Personal Website
+  `src/diary/api.ts:152-170` retains the exported `loadTodayEntries` wrapper
+  after the UI moved to history and no endpoint-tree consumer remains. The
+  backend `/entries/today` compatibility contract itself remains required for
+  Ticket 03.
+- **Low, non-blocking judgement - Duplicated Code:** Personal Website
+  `tests/e2e/continuous-history.spec.ts:37-73,266-302,381-417` repeats the
+  synthetic Supabase session and health/owner route setup. A shared test
+  helper could reduce future fixture drift.
+- No other documented-standard violation or baseline smell warranted a
+  finding. Ordered v1/v2 migration duplication is required by the
+  expand-contract decision in ADR 0013 and was not reported as a smell.
+
+#### Spec findings and blocking-fix revalidation
+
+- **No Spec findings.** Ticket 04 has no missing or partial requirement,
+  unrequested feature, or implementation behavior that appears incorrect in
+  the fixed ranges.
+- The prior timestamp blocker is resolved:
+  - Personal Website `src/diary/EntryExperience.tsx:91-140` parses
+    timezone-aware ISO Entry Times to integer microseconds, compares the full
+    instant first, and consults stable Entry identity only for a true equal
+    instant.
+  - `tests/e2e/continuous-history.spec.ts:377-454` uses
+    `.000100Z` for the older `ffffffff-...` UUID and `.000900Z` for the newer
+    `00000000-...` UUID. Millisecond truncation plus a premature UUID
+    tie-break would fail this Chromium regression.
+- The prior snapshot blocker is resolved:
+  - `supabase/migrations/20260729120000_use_transaction_snapshot_for_history.sql:42-67,69-93`
+    captures `pg_current_snapshot()` for the first statement and filters
+    later requests with `pg_visible_in_snapshot()`.
+  - `src/diary_api/app.py:321-342` carries the same transaction-visibility
+    token in both opaque cursors.
+  - `tests/system/test_continuous_history.py:341-447` holds an owner capture
+    transaction uncommitted, requests the first history page through real
+    Uvicorn, FastAPI, PostgREST, and PostgreSQL, commits the capture, then
+    independently follows older and newer cursors. It proves exact equality
+    with the original visible Entry set, no duplicates, no omissions, and no
+    mid-snapshot capture; a fresh traversal then proves the committed Entry is
+    visible.
+- Additional acceptance coverage was confirmed:
+  - independent bounded older/newer pagination and equal-Entry-Time identity:
+    `tests/system/test_continuous_history.py:180-338`;
+  - complete Original Content, `Asia/Taipei` midnight boundaries, FastAPI
+    non-owner denial, and direct PostgREST/RLS denial:
+    `tests/system/test_continuous_history.py:452-540`;
+  - complete content, separate cursor requests, and prepend/append visual
+    scroll anchoring:
+    `tests/e2e/continuous-history.spec.ts:33-260`;
+  - user-scroll-triggered incremental loading:
+    `tests/e2e/continuous-history.spec.ts:262-375`;
+  - composer reading-position restoration and Ticket 03 capture behavior:
+    `tests/e2e/diary-tracer.spec.ts:427-579`;
+  - real Supabase Auth/PostgreSQL/PostgREST, FastAPI HTTP/Uvicorn, Vite, and
+    mobile Chromium behavior remained covered by the complete Diary suite.
+- Ticket 03 owner authentication, capture, idempotency, Today compatibility,
+  backdated capture, RLS, immutable revision, and mobile Magic Link behavior
+  remained green.
+- Ticket 05, Calendar, editing, AI Draft generation, RAG, and Agent behavior
+  were not implemented.
+- Fixed-endpoint secret scans found only tracked `.env.example` files,
+  documentation references, synthetic test tokens, and intentional public
+  publishable-key configuration. No candidate committed credential or
+  frontend secret was found, and the built-site verification passed.
+
+#### Complete verification results
+
+- Diary:
+  - `python -m mypy src tests`: passed, 17 source files.
+  - `python -m pytest -q`: passed, 46 tests, with one existing
+    Starlette/httpx deprecation warning.
+  - `npm.cmd run supabase -- db lint --level warning`: passed with no schema
+    errors or findings.
+  - The first sandboxed pytest and lint attempts could not write the Supabase
+    CLI user telemetry file. The first authorized lint retry then found the
+    local stack stopped by pytest. After explicitly starting the local
+    Supabase/Docker stack, the authorized full pytest and lint reruns above
+    completed successfully; these were environment-only setup failures, not
+    product-test failures.
+- Personal Website:
+  - `npm.cmd run typecheck`: passed.
+  - `npm.cmd run test:e2e`: passed, 13 Chromium tests.
+  - `npm.cmd run build`: passed. Vite emitted its existing notices for legacy
+    non-module static scripts while producing the complete site.
+  - `npm.cmd run verify:build`: passed and verified the GitHub Pages output.
+
+Ticket 04 may proceed past the code-review gate. This review did not modify
+production code and did not begin Ticket 05.

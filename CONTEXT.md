@@ -337,12 +337,12 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 ## Next item
 
 Ticket 04 continuous bidirectional history has been implemented with TDD in
-Diary and Personal Website. The implementation starts at Today, groups complete
-current Original Content by `Asia/Taipei` date, incrementally follows separate
-older and newer snapshot cursors, and preserves the reader's visual anchor
-while keeping the composer available. Diary CI pins Personal Website commit
-`578785059949681a03897b49d8f88920f0db1e5e` so the real cross-repository suite
-will exercise this implementation. Local complete verification is green, but
-Ticket 04 is not complete until both commits are pushed, their latest GitHub
-Actions pass, and a new-session fixed-range code review records a Passed
-verdict. Ticket 05 has not started and must not start before those gates pass.
+Diary and Personal Website and has passed its new-session fixed-range code
+review. The implementation starts at Today, groups complete current Original
+Content by `Asia/Taipei` date, incrementally follows separate older and newer
+snapshot cursors, and preserves the reader's visual anchor while keeping the
+composer available. Diary CI pins reviewed Personal Website commit
+`22326dea27c35fb69852b3a5c5b1cf731d9546aa` so the real cross-repository suite
+exercises the matching implementation. Complete local verification and the
+implementation GitHub Actions are green. Ticket 05 calendar navigation is the
+next dependency-ready item and has not started.
