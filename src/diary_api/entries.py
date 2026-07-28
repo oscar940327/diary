@@ -40,7 +40,7 @@ class HistorySlice:
     entries: list[EntryRecord]
     has_older: bool
     has_newer: bool
-    snapshot_at: datetime
+    snapshot: str
 
 
 class SupabaseEntryStore:
@@ -110,11 +110,11 @@ class SupabaseEntryStore:
         direction: Literal["initial", "older", "newer"],
         cursor_entry_at: datetime | None,
         cursor_entry_id: UUID | None,
-        snapshot_at: datetime | None,
+        snapshot: str | None,
         limit: int,
     ) -> HistorySlice:
         rows = await self._rpc(
-            "list_diary_history",
+            "list_diary_history_v2",
             {
                 "p_anchor_date": anchor_date.isoformat(),
                 "p_direction": direction,
@@ -128,11 +128,7 @@ class SupabaseEntryStore:
                     if cursor_entry_id is not None
                     else None
                 ),
-                "p_snapshot_at": (
-                    snapshot_at.isoformat()
-                    if snapshot_at is not None
-                    else None
-                ),
+                "p_snapshot": snapshot,
                 "p_limit": limit,
             },
             access_token=access_token,
@@ -142,13 +138,13 @@ class SupabaseEntryStore:
                 entries=[],
                 has_older=False,
                 has_newer=False,
-                snapshot_at=snapshot_at or datetime.now().astimezone(),
+                snapshot=snapshot or "",
             )
 
         first_metadata = {
             "has_older": rows[0].get("has_older"),
             "has_newer": rows[0].get("has_newer"),
-            "snapshot_at": rows[0].get("snapshot_at"),
+            "snapshot": rows[0].get("snapshot"),
         }
         if not all(
             row.get(key) == value
@@ -162,19 +158,17 @@ class SupabaseEntryStore:
             entry_row = dict(row)
             entry_row.pop("has_older", None)
             entry_row.pop("has_newer", None)
-            entry_row.pop("snapshot_at", None)
+            entry_row.pop("snapshot", None)
             entry_rows.append(entry_row)
 
         try:
             has_older = first_metadata["has_older"]
             has_newer = first_metadata["has_newer"]
-            parsed_snapshot = datetime.fromisoformat(
-                str(first_metadata["snapshot_at"])
-            )
+            parsed_snapshot = first_metadata["snapshot"]
             if not isinstance(has_older, bool) or not isinstance(
                 has_newer,
                 bool,
-            ):
+            ) or not isinstance(parsed_snapshot, str) or not parsed_snapshot:
                 raise ValueError
             return HistorySlice(
                 entries=[
@@ -183,7 +177,7 @@ class SupabaseEntryStore:
                 ],
                 has_older=has_older,
                 has_newer=has_newer,
-                snapshot_at=parsed_snapshot,
+                snapshot=parsed_snapshot,
             )
         except ValueError as error:
             raise EntryStoreUnavailable from error

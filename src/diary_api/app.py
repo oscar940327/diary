@@ -83,12 +83,12 @@ class EntryDateGroup(BaseModel):
 class HistoryCursor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    version: Literal[1] = 1
+    version: Literal[2] = 2
     anchor_date: date
     direction: Literal["older", "newer"]
     entry_at: datetime
     entry_id: UUID
-    snapshot_at: datetime
+    snapshot: str
 
 
 class HistoryPage(BaseModel):
@@ -290,7 +290,7 @@ async def list_history_entries(
         ] = "initial"
         cursor_entry_at = None
         cursor_entry_id = None
-        snapshot_at = None
+        snapshot = None
     else:
         if direction is None or anchor_date is not None:
             raise invalid_history_cursor()
@@ -301,7 +301,7 @@ async def list_history_entries(
         resolved_direction = direction
         cursor_entry_at = decoded_cursor.entry_at
         cursor_entry_id = decoded_cursor.entry_id
-        snapshot_at = decoded_cursor.snapshot_at
+        snapshot = decoded_cursor.snapshot
 
     try:
         history = await store.list_history(
@@ -310,7 +310,7 @@ async def list_history_entries(
             direction=resolved_direction,
             cursor_entry_at=cursor_entry_at,
             cursor_entry_id=cursor_entry_id,
-            snapshot_at=snapshot_at,
+            snapshot=snapshot,
             limit=limit,
         )
     except EntryStoreUnavailable as error:
@@ -327,7 +327,7 @@ async def list_history_entries(
                     direction="older",
                     entry_at=oldest.entry_at,
                     entry_id=oldest.id,
-                    snapshot_at=history.snapshot_at,
+                    snapshot=history.snapshot,
                 )
             )
         if history.has_newer:
@@ -338,7 +338,7 @@ async def list_history_entries(
                     direction="newer",
                     entry_at=newest.entry_at,
                     entry_id=newest.id,
-                    snapshot_at=history.snapshot_at,
+                    snapshot=history.snapshot,
                 )
             )
 

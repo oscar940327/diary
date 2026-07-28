@@ -1,12 +1,121 @@
 from collections.abc import Iterable
+import subprocess
 from typing import Protocol
 
 import httpx
 
 
+OWNER_ID = "61c2f4ca-2fab-4b50-a0cf-12aac0ec0b24"
+
+
 class SupabaseSettings(Protocol):
     api_url: str
     publishable_key: str
+
+
+class PendingCapture:
+    def __init__(
+        self,
+        *,
+        original_content: str,
+        entry_at: str,
+        idempotency_key: str,
+    ) -> None:
+        self._process = subprocess.Popen(
+            [
+                "docker",
+                "exec",
+                "-i",
+                "supabase_db_diary",
+                "psql",
+                "--username",
+                "postgres",
+                "--dbname",
+                "postgres",
+                "--no-align",
+                "--tuples-only",
+                "--quiet",
+            ],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if self._process.stdin is None or self._process.stdout is None:
+            raise AssertionError("Could not open PostgreSQL capture session")
+        self._stdin = self._process.stdin
+        self._stdout = self._process.stdout
+        self._stdin.write(
+            "begin;\n"
+            "set local role authenticated;\n"
+            "select set_config("
+            f"'request.jwt.claim.sub', '{OWNER_ID}', true"
+            ");\n"
+            "select set_config("
+            "'request.jwt.claim.role', 'authenticated', true"
+            ");\n"
+            "select 'ENTRY_ID:' || id::text "
+            "from public.create_diary_entry("
+            f"'{original_content}', "
+            f"'{entry_at}'::timestamptz, "
+            f"'{idempotency_key}'"
+            ");\n"
+            "\\echo CAPTURE_PENDING\n"
+        )
+        self._stdin.flush()
+        self.entry_id = self._read_marker_value(
+            value_prefix="ENTRY_ID:",
+            final_marker="CAPTURE_PENDING",
+        )
+
+    def _read_marker_value(
+        self,
+        *,
+        value_prefix: str,
+        final_marker: str,
+    ) -> str:
+        value: str | None = None
+        while True:
+            line = self._stdout.readline()
+            if line == "":
+                stderr = (
+                    self._process.stderr.read()
+                    if self._process.stderr is not None
+                    else ""
+                )
+                raise AssertionError(
+                    "PostgreSQL capture session ended unexpectedly: "
+                    f"{stderr}"
+                )
+            stripped = line.strip()
+            if stripped.startswith(value_prefix):
+                value = stripped.removeprefix(value_prefix)
+            if stripped == final_marker:
+                if value is None:
+                    raise AssertionError(
+                        "PostgreSQL capture did not return an Entry id"
+                    )
+                return value
+
+    def commit(self) -> None:
+        self._stdin.write("commit;\n\\echo CAPTURE_COMMITTED\n\\q\n")
+        self._stdin.flush()
+        self._read_marker_value(
+            value_prefix="CAPTURE_COMMITTED",
+            final_marker="CAPTURE_COMMITTED",
+        )
+        self._process.wait(timeout=10)
+
+    def close(self) -> None:
+        if self._process.poll() is not None:
+            return
+        self._stdin.write("rollback;\n\\q\n")
+        self._stdin.flush()
+        try:
+            self._process.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._process.terminate()
+            self._process.wait(timeout=10)
 
 
 def _owner_headers(access_token: str) -> dict[str, str]:
@@ -229,6 +338,117 @@ def test_history_cursor_snapshot_is_stable_for_equal_entry_times(
     assert str(added_after_snapshot["id"]) in refreshed_ids
 
 
+def test_history_snapshot_excludes_capture_committed_between_cursor_requests(
+    diary_api: str,
+    owner_access_token: str,
+) -> None:
+    original_entries = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                f"history-overlap-original-{day}",
+                f"Snapshot original day {day}",
+                f"2099-10-{day:02d}T12:00:00+08:00",
+            )
+            for day in range(1, 7)
+        ),
+    )
+    pending_capture = PendingCapture(
+        idempotency_key="history-overlap-pending",
+        original_content="Capture committed after the first history page",
+        entry_at="2099-10-01T18:00:00+08:00",
+    )
+    try:
+        initial_response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "anchor_date": "2099-10-03",
+                "limit": 2,
+            },
+        )
+        assert initial_response.status_code == 200
+        initial = initial_response.json()
+        assert _page_contents(initial) == [
+            "Snapshot original day 3",
+            "Snapshot original day 2",
+        ]
+
+        pending_capture.commit()
+
+        older_response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "direction": "older",
+                "cursor": initial["older_cursor"],
+                "limit": 1,
+            },
+        )
+        newer_response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "direction": "newer",
+                "cursor": initial["newer_cursor"],
+                "limit": 2,
+            },
+        )
+        assert older_response.status_code == 200
+        assert newer_response.status_code == 200
+        assert _page_contents(older_response.json()) == [
+            "Snapshot original day 1"
+        ]
+        assert _page_contents(newer_response.json()) == [
+            "Snapshot original day 5",
+            "Snapshot original day 4",
+        ]
+
+        newest_response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "direction": "newer",
+                "cursor": newer_response.json()["newer_cursor"],
+                "limit": 2,
+            },
+        )
+        assert newest_response.status_code == 200
+        assert _page_contents(newest_response.json()) == [
+            "Snapshot original day 6"
+        ]
+
+        paged_entries = (
+            _page_entries(initial)
+            + _page_entries(older_response.json())
+            + _page_entries(newer_response.json())
+            + _page_entries(newest_response.json())
+        )
+        paged_ids = [str(entry["id"]) for entry in paged_entries]
+        assert set(paged_ids) == {
+            str(entry["id"]) for entry in original_entries
+        }
+        assert len(paged_ids) == len(set(paged_ids))
+        assert pending_capture.entry_id not in paged_ids
+
+        refreshed_response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "anchor_date": "2099-10-03",
+                "limit": 10,
+            },
+        )
+        assert refreshed_response.status_code == 200
+        assert pending_capture.entry_id in {
+            str(entry["id"])
+            for entry in _page_entries(refreshed_response.json())
+        }
+    finally:
+        pending_capture.close()
+
+
 def test_history_groups_complete_content_at_taipei_date_boundaries(
     diary_api: str,
     local_supabase: SupabaseSettings,
@@ -301,7 +521,7 @@ def test_history_groups_complete_content_at_taipei_date_boundaries(
     non_owner_rls_response = httpx.post(
         (
             f"{local_supabase.api_url}"
-            "/rest/v1/rpc/list_diary_history"
+            "/rest/v1/rpc/list_diary_history_v2"
         ),
         headers=_postgrest_headers(
             local_supabase,
@@ -312,7 +532,7 @@ def test_history_groups_complete_content_at_taipei_date_boundaries(
             "p_direction": "initial",
             "p_cursor_entry_at": None,
             "p_cursor_entry_id": None,
-            "p_snapshot_at": None,
+            "p_snapshot": None,
             "p_limit": 10,
         },
     )
