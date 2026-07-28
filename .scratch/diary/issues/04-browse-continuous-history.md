@@ -243,6 +243,15 @@ fixes and a new fixed-range review before Ticket 05 is ready.
     `62215e1fa1d96331fa4c6d982311dd32ee05e71c...fa774739a482254c1f7d1b0d9b655dd2de358776`
   - Personal Website:
     `914407d090b54e2037810238e34c02cc9709df2c...22326dea27c35fb69852b3a5c5b1cf731d9546aa`
+- GitHub Actions were green for the pushed fixes:
+  - Diary `Backend checks`, run
+    [30381806444](https://github.com/oscar940327/diary/actions/runs/30381806444):
+    completed successfully.
+  - Personal Website `Website checks and Pages`, run
+    [30381667326](https://github.com/oscar940327/my-personal-website/actions/runs/30381667326):
+    completed successfully.
+  - Personal Website `pages build and deployment`, run
+    [30381665752](https://github.com/oscar940327/my-personal-website/actions/runs/30381665752):
+    completed successfully.
 - This is an implementation and verification record, not a Passed verdict.
-  Ticket 04 still requires a fresh fixed-range code-review session. GitHub
-  Actions are pending for the new pushed SHAs.
+  Ticket 04 still requires a fresh fixed-range code-review session.
