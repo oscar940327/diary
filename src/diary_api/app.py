@@ -1,5 +1,9 @@
+import base64
+import binascii
+import json
 from datetime import UTC, date, datetime
 from typing import Annotated, Literal, TypedDict
+from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from fastapi import (
@@ -7,6 +11,7 @@ from fastapi import (
     FastAPI,
     Header,
     HTTPException,
+    Query,
     Response,
     status,
 )
@@ -75,6 +80,26 @@ class EntryDateGroup(BaseModel):
     entries: list[EntryRecord]
 
 
+class HistoryCursor(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: Literal[1] = 1
+    anchor_date: date
+    direction: Literal["older", "newer"]
+    entry_at: datetime
+    entry_id: UUID
+    snapshot_at: datetime
+
+
+class HistoryPage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    anchor_date: date
+    groups: list[EntryDateGroup]
+    older_cursor: str | None
+    newer_cursor: str | None
+
+
 app = FastAPI(title="Diary API")
 app.add_middleware(
     CORSMiddleware,
@@ -119,6 +144,48 @@ def entry_service_unavailable() -> HTTPException:
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Entry service unavailable",
     )
+
+
+def invalid_history_cursor() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail="History cursor is invalid",
+    )
+
+
+def encode_history_cursor(cursor: HistoryCursor) -> str:
+    payload = cursor.model_dump_json().encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def decode_history_cursor(value: str) -> HistoryCursor:
+    try:
+        padding = "=" * (-len(value) % 4)
+        decoded = base64.b64decode(
+            value + padding,
+            altchars=b"-_",
+            validate=True,
+        )
+        payload = json.loads(decoded)
+        return HistoryCursor.model_validate(payload)
+    except (
+        binascii.Error,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+    ) as error:
+        raise invalid_history_cursor() from error
+
+
+def group_entries(entries: list[EntryRecord]) -> list[EntryDateGroup]:
+    groups: list[EntryDateGroup] = []
+    for entry in entries:
+        if not groups or groups[-1].date != entry.owner_date:
+            groups.append(
+                EntryDateGroup(date=entry.owner_date, entries=[])
+            )
+        groups[-1].entries.append(entry)
+    return groups
 
 
 @app.get("/health")
@@ -191,3 +258,93 @@ async def list_today_entries(
     except EntryStoreUnavailable as error:
         raise entry_service_unavailable() from error
     return EntryDateGroup(date=owner_date, entries=entries)
+
+
+@app.get(
+    "/entries/history",
+    response_model=HistoryPage,
+)
+async def list_history_entries(
+    anchor_date: Annotated[date | None, Query()] = None,
+    direction: Annotated[
+        Literal["older", "newer"] | None,
+        Query(),
+    ] = None,
+    cursor: Annotated[
+        str | None,
+        Query(min_length=1, max_length=2048),
+    ] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> HistoryPage:
+    owner_today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+    if cursor is None:
+        if direction is not None:
+            raise invalid_history_cursor()
+        resolved_anchor = anchor_date or owner_today
+        resolved_direction: Literal[
+            "initial",
+            "older",
+            "newer",
+        ] = "initial"
+        cursor_entry_at = None
+        cursor_entry_id = None
+        snapshot_at = None
+    else:
+        if direction is None or anchor_date is not None:
+            raise invalid_history_cursor()
+        decoded_cursor = decode_history_cursor(cursor)
+        if decoded_cursor.direction != direction:
+            raise invalid_history_cursor()
+        resolved_anchor = decoded_cursor.anchor_date
+        resolved_direction = direction
+        cursor_entry_at = decoded_cursor.entry_at
+        cursor_entry_id = decoded_cursor.entry_id
+        snapshot_at = decoded_cursor.snapshot_at
+
+    try:
+        history = await store.list_history(
+            access_token=owner.access_token,
+            anchor_date=resolved_anchor,
+            direction=resolved_direction,
+            cursor_entry_at=cursor_entry_at,
+            cursor_entry_id=cursor_entry_id,
+            snapshot_at=snapshot_at,
+            limit=limit,
+        )
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+
+    older_cursor = None
+    newer_cursor = None
+    if history.entries:
+        if history.has_older:
+            oldest = history.entries[-1]
+            older_cursor = encode_history_cursor(
+                HistoryCursor(
+                    anchor_date=resolved_anchor,
+                    direction="older",
+                    entry_at=oldest.entry_at,
+                    entry_id=oldest.id,
+                    snapshot_at=history.snapshot_at,
+                )
+            )
+        if history.has_newer:
+            newest = history.entries[0]
+            newer_cursor = encode_history_cursor(
+                HistoryCursor(
+                    anchor_date=resolved_anchor,
+                    direction="newer",
+                    entry_at=newest.entry_at,
+                    entry_id=newest.id,
+                    snapshot_at=history.snapshot_at,
+                )
+            )
+
+    return HistoryPage(
+        anchor_date=resolved_anchor,
+        groups=group_entries(history.entries),
+        older_cursor=older_cursor,
+        newer_cursor=newer_cursor,
+    )

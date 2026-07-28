@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date, datetime
 from functools import lru_cache
 from typing import Any, Literal
@@ -32,6 +33,14 @@ class EntryRecord(BaseModel):
         "failed",
         "blocked_budget",
     ]
+
+
+@dataclass(frozen=True)
+class HistorySlice:
+    entries: list[EntryRecord]
+    has_older: bool
+    has_newer: bool
+    snapshot_at: datetime
 
 
 class SupabaseEntryStore:
@@ -90,6 +99,92 @@ class SupabaseEntryStore:
                 EntryRecord.model_validate(row)
                 for row in rows
             ]
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def list_history(
+        self,
+        *,
+        access_token: str,
+        anchor_date: date,
+        direction: Literal["initial", "older", "newer"],
+        cursor_entry_at: datetime | None,
+        cursor_entry_id: UUID | None,
+        snapshot_at: datetime | None,
+        limit: int,
+    ) -> HistorySlice:
+        rows = await self._rpc(
+            "list_diary_history",
+            {
+                "p_anchor_date": anchor_date.isoformat(),
+                "p_direction": direction,
+                "p_cursor_entry_at": (
+                    cursor_entry_at.isoformat()
+                    if cursor_entry_at is not None
+                    else None
+                ),
+                "p_cursor_entry_id": (
+                    str(cursor_entry_id)
+                    if cursor_entry_id is not None
+                    else None
+                ),
+                "p_snapshot_at": (
+                    snapshot_at.isoformat()
+                    if snapshot_at is not None
+                    else None
+                ),
+                "p_limit": limit,
+            },
+            access_token=access_token,
+        )
+        if not rows:
+            return HistorySlice(
+                entries=[],
+                has_older=False,
+                has_newer=False,
+                snapshot_at=snapshot_at or datetime.now().astimezone(),
+            )
+
+        first_metadata = {
+            "has_older": rows[0].get("has_older"),
+            "has_newer": rows[0].get("has_newer"),
+            "snapshot_at": rows[0].get("snapshot_at"),
+        }
+        if not all(
+            row.get(key) == value
+            for row in rows
+            for key, value in first_metadata.items()
+        ):
+            raise EntryStoreUnavailable
+
+        entry_rows: list[dict[str, Any]] = []
+        for row in rows:
+            entry_row = dict(row)
+            entry_row.pop("has_older", None)
+            entry_row.pop("has_newer", None)
+            entry_row.pop("snapshot_at", None)
+            entry_rows.append(entry_row)
+
+        try:
+            has_older = first_metadata["has_older"]
+            has_newer = first_metadata["has_newer"]
+            parsed_snapshot = datetime.fromisoformat(
+                str(first_metadata["snapshot_at"])
+            )
+            if not isinstance(has_older, bool) or not isinstance(
+                has_newer,
+                bool,
+            ):
+                raise ValueError
+            return HistorySlice(
+                entries=[
+                    EntryRecord.model_validate(row)
+                    for row in entry_rows
+                ],
+                has_older=has_older,
+                has_newer=has_newer,
+                snapshot_at=parsed_snapshot,
+            )
         except ValueError as error:
             raise EntryStoreUnavailable from error
 

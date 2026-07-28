@@ -71,6 +71,16 @@ committed atomically. `GET /entries/today` returns the owner's current
 `Asia/Taipei` date group. Ticket 03 creates the obligation only; no AI or queue
 worker runs yet.
 
+The primary read endpoint is `GET /entries/history`. Its first request starts
+at today's `Asia/Taipei` date unless an `anchor_date` is supplied. The response
+contains complete current Original Content grouped by owner date and separate
+opaque `older_cursor` and `newer_cursor` values. Follow either cursor with its
+matching `direction`; bounded keyset pages use Entry Time plus Entry identity
+for stable ordering and retain one snapshot while paging so intervening
+captures are not duplicated or skipped. Start a new request without a cursor
+to refresh that snapshot. `GET /entries/today` remains available for the
+Ticket 03 compatibility contract.
+
 In the sibling frontend repository, copy `.env.example` to `.env.local`, use
 the local `API_URL` and `PUBLISHABLE_KEY` printed by Supabase, then run:
 

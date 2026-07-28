@@ -336,11 +336,13 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 03 capture and Today history is complete. Its product, timer-cleanup,
-and final CI/documentation correction ranges passed their required reviews;
-the one product-review Standards judgment call was non-blocking, and the final
-correction review had no Standards or Spec findings. GitHub Actions passed for
-Diary commit `d3bbdb288168c663e0aeb7df23afbf1ca1be149d` and Personal Website
-commit `914407d090b54e2037810238e34c02cc9709df2c`. Diary CI pins that reviewed
-Website commit, so the real cross-repository suite exercises Ticket 03.
-Ticket 04 is now the next dependency-ready ticket and has not started.
+Ticket 04 continuous bidirectional history has been implemented with TDD in
+Diary and Personal Website. The implementation starts at Today, groups complete
+current Original Content by `Asia/Taipei` date, incrementally follows separate
+older and newer snapshot cursors, and preserves the reader's visual anchor
+while keeping the composer available. Diary CI pins Personal Website commit
+`578785059949681a03897b49d8f88920f0db1e5e` so the real cross-repository suite
+will exercise this implementation. Local complete verification is green, but
+Ticket 04 is not complete until both commits are pushed, their latest GitHub
+Actions pass, and a new-session fixed-range code review records a Passed
+verdict. Ticket 05 has not started and must not start before those gates pass.
