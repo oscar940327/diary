@@ -63,3 +63,120 @@
   requires a fresh fixed-range code-review session and green GitHub Actions.
 - Ticket 05, Calendar, editing, AI Draft, RAG, and Agent behavior were not
   implemented.
+
+### 2026-07-28 - Fixed-range code review failed
+
+- Review verdict: **FAILED**.
+  - Standards: **PASS** with no hard or blocking violation and two
+    non-blocking judgement findings.
+  - Spec: **FAIL** with two blocking findings.
+- Fixed review ranges:
+  - Diary:
+    `62215e1fa1d96331fa4c6d982311dd32ee05e71c...82643322472ef392290c21e0028428cce5db37fa`
+  - Personal Website:
+    `914407d090b54e2037810238e34c02cc9709df2c...578785059949681a03897b49d8f88920f0db1e5e`
+- Reviewed implementation SHAs:
+  - Diary: `82643322472ef392290c21e0028428cce5db37fa`
+  - Personal Website: `578785059949681a03897b49d8f88920f0db1e5e`
+
+#### Spec finding
+
+- **Blocking - frontend loses sub-millisecond Entry Time ordering.**
+  Personal Website `src/diary/EntryExperience.tsx` lines 91-96 sorts
+  `entry_at` with `Date.parse()`. JavaScript `Date` keeps only millisecond
+  precision, while PostgreSQL `timestamptz` and the FastAPI response preserve
+  microseconds. Two Entries at, for example, `.000100Z` and `.000900Z` are
+  therefore treated as having the same Entry Time and are incorrectly ordered
+  by UUID. A larger UUID on the older Entry places it above the newer Entry.
+  This violates the acceptance criteria that newer Entry Times appear above
+  older Entry Times and that stable Entry identity is only the tie-breaker when
+  Entry Times are actually equal. A direct Node reproduction produced equal
+  `Date.parse()` values for those timestamps and sorted the older, larger-UUID
+  Entry first. The current equal-timestamp browser coverage does not exercise
+  distinct microseconds within one millisecond.
+- **Blocking - the timestamp watermark is not a stable PostgreSQL snapshot.**
+  `20260728123000_list_continuous_history.sql` records
+  `clock_timestamp()` and later selects `entries.created_at <= v_snapshot_at`.
+  The capture RPC independently records `created_at` with
+  `clock_timestamp()`. Under PostgreSQL READ COMMITTED semantics, a capture
+  transaction can record `created_at = T0` but remain uncommitted while the
+  first history statement takes its visibility snapshot and watermark at
+  `T1 > T0`. The first page cannot see that Entry. If capture commits before
+  the next cursor request, the new statement can see it and the timestamp
+  predicate admits it because `T0 <= T1`. Depending on which side of the
+  keyset boundary its `(entry_at, id)` occupies, the Entry either appears
+  midway through the supposed snapshot or is permanently omitted from that
+  traversal. The existing test covers a capture that starts and commits after
+  the first page; it does not cover an overlapping transaction. This violates
+  the acceptance criterion that request-to-request data changes must not
+  duplicate or omit Entries.
+
+#### Standards findings
+
+- Non-blocking judgement call, **Speculative Generality**:
+  Personal Website `src/diary/api.ts` lines 152-170 retains the exported
+  `loadTodayEntries` wrapper after the UI moved to the history endpoint and no
+  call site remains. The backend `/entries/today` compatibility contract is
+  still required for Ticket 03; only the unused frontend wrapper is in
+  question.
+- Non-blocking judgement call, **Duplicated Code**:
+  Personal Website `tests/e2e/continuous-history.spec.ts` repeats the synthetic
+  Supabase session plus health and owner-route setup across its two tests.
+  A test helper could reduce future auth-fixture drift.
+- No documented-standard breach was found. FastAPI still requires the owner,
+  the history RPC uses the caller JWT with `security invoker`, `auth.uid()`,
+  RLS, and `authenticated`-only execution, and the CI workflow pins the exact
+  reviewed frontend SHA.
+
+#### Acceptance and scope verification
+
+- Confirmed working and covered: separate incremental older/newer cursors;
+  backend `(entry_at, id)` keyset ordering for exactly equal timestamps;
+  exclusion of a sequential capture that starts after the first request; fixed
+  `Asia/Taipei` grouping and boundaries; complete current Original Content;
+  prepend/append visual-anchor restoration; composer/capture
+  reading-position restoration; FastAPI plus PostgreSQL RLS defense in depth;
+  and the real Supabase, PostgREST, FastAPI HTTP, Uvicorn, and Chromium seam.
+- Ticket 03 authentication, capture, idempotency, Today compatibility,
+  backdated capture, RLS, and immutable revision behavior remained green in
+  the complete suites.
+- Ticket 05, Calendar, editing, AI Draft generation, RAG, and Agent behavior
+  were not implemented.
+- No candidate committed secret was found in either reviewed tree. The only
+  tracked environment files are `.env.example`; frontend configuration remains
+  limited to public API, Supabase URL, and publishable-key values.
+- Ticket 04 cannot satisfy all acceptance criteria until both blocking defects
+  are fixed and covered by regression tests.
+
+#### Verification results
+
+- Both endpoints resolved, each three-dot diff was non-empty, and both
+  `git diff --check` commands passed.
+- Diary:
+  - `python -m mypy src tests`: passed, 17 source files.
+  - `python -m pytest -q`: 45 passed with one existing dependency deprecation
+    warning.
+  - `npm.cmd run supabase -- db lint --level warning`: passed with no schema
+    findings.
+- Personal Website:
+  - `npm.cmd run typecheck`: passed.
+  - `npm.cmd run test:e2e`: 12 Chromium tests passed.
+  - `npm.cmd run build`: passed.
+  - `npm.cmd run verify:build`: passed.
+- The initial sandbox-limited Supabase CLI invocations were inconclusive only
+  because the CLI could not write its user telemetry file; the authorized
+  reruns above completed successfully.
+- GitHub Actions were green for both reviewed implementation SHAs:
+  - Diary `Backend checks`, run
+    [30375290710](https://github.com/oscar940327/diary/actions/runs/30375290710):
+    completed successfully.
+  - Personal Website `Website checks and Pages`, run
+    [30375292891](https://github.com/oscar940327/my-personal-website/actions/runs/30375292891):
+    completed successfully.
+  - Personal Website `pages build and deployment`, run
+    [30375291796](https://github.com/oscar940327/my-personal-website/actions/runs/30375291796):
+    completed successfully.
+
+The review record now needs a documentation-only commit. It must not mark the
+ticket passed or begin Ticket 05. The blocking findings require implementation
+fixes and a new fixed-range review before Ticket 05 is ready.
