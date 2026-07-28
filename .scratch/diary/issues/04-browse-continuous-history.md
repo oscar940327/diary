@@ -180,3 +180,69 @@
 The review record now needs a documentation-only commit. It must not mark the
 ticket passed or begin Ticket 05. The blocking findings require implementation
 fixes and a new fixed-range review before Ticket 05 is ready.
+
+### 2026-07-29 - Blocking review fixes implemented, awaiting new review
+
+- New implementation SHAs:
+  - Diary:
+    `fa774739a482254c1f7d1b0d9b655dd2de358776`
+  - Personal Website:
+    `22326dea27c35fb69852b3a5c5b1cf731d9546aa`
+- TDD red evidence:
+  - The new Chromium regression used Entry Times
+    `2026-07-29T04:00:00.000100Z` and
+    `2026-07-29T04:00:00.000900Z` with the older Entry assigned the larger
+    `ffffffff-...` UUID. It failed because `Date.parse()` collapsed both
+    values to one millisecond and displayed the older Entry first.
+  - The new real-PostgreSQL regression held an owner capture RPC transaction
+    open after creating its Entry, requested the first history page through
+    Uvicorn, FastAPI, and PostgREST, committed the capture, and then followed
+    the older cursor. It failed because the newly committed Entry appeared in
+    the older page even though it was not visible to the first statement.
+- TDD green result:
+  - Personal Website now compares timezone-aware ISO Entry Times as integer
+    microseconds. Stable Entry identity is consulted only when the complete
+    instants are equal.
+  - The new additive `list_diary_history_v2` RPC captures
+    `pg_current_snapshot()` on the initial statement and carries its
+    transaction-visibility token through opaque HTTP cursors. Later pages use
+    `pg_visible_in_snapshot()` instead of a `clock_timestamp()` /
+    `created_at` watermark. The previous RPC remains available for
+    expand-contract compatibility.
+  - The overlap regression verifies separate incremental older and newer
+    cursors, the complete original visible Entry set, and no duplicate,
+    omitted, or mid-snapshot Entry.
+- Complete Diary verification:
+  - `python -m mypy src tests`: passed, 17 source files.
+  - `python -m pytest -q`: 46 passed with one existing dependency
+    deprecation warning.
+  - `npm.cmd run supabase -- db reset`: passed; every ordered migration,
+    including the v2 snapshot RPC, applied from a clean local database.
+  - `npm.cmd run supabase -- db lint --level warning`: passed with no schema
+    findings.
+- Complete Personal Website verification:
+  - `npm.cmd run typecheck`: passed.
+  - `npm.cmd run test:e2e`: 13 Chromium tests passed.
+  - `npm.cmd run build`: passed.
+  - `npm.cmd run verify:build`: passed.
+- Ticket 03 owner authentication, capture, idempotency, Today compatibility,
+  backdated capture, RLS, and immutable revision coverage remained green.
+  Asia/Taipei grouping, complete Original Content, visual scroll anchors,
+  composer reading position, owner-only FastAPI authorization, and PostgreSQL
+  RLS defense in depth also remained green.
+- The real Supabase, PostgREST, FastAPI HTTP, Uvicorn, and Chromium seams are
+  retained. Diary CI now pins the new Personal Website implementation SHA.
+- Secret checks found no credential-like values in either implementation
+  diff. Both repositories track only `.env.example`; frontend configuration
+  remains limited to the public API URL, Supabase URL, and publishable key.
+- Ticket 05, Calendar, editing, AI Draft generation, RAG, and Agent behavior
+  were not implemented. The two non-blocking review cleanup findings were not
+  changed.
+- Complete fixed ranges for the required new code-review session:
+  - Diary:
+    `62215e1fa1d96331fa4c6d982311dd32ee05e71c...fa774739a482254c1f7d1b0d9b655dd2de358776`
+  - Personal Website:
+    `914407d090b54e2037810238e34c02cc9709df2c...22326dea27c35fb69852b3a5c5b1cf731d9546aa`
+- This is an implementation and verification record, not a Passed verdict.
+  Ticket 04 still requires a fresh fixed-range code-review session. GitHub
+  Actions are pending for the new pushed SHAs.
