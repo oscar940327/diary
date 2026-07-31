@@ -35,6 +35,13 @@ class EntryRecord(BaseModel):
     ]
 
 
+class CalendarDayCount(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    owner_date: date
+    entry_count: int
+
+
 @dataclass(frozen=True)
 class HistorySlice:
     entries: list[EntryRecord]
@@ -97,6 +104,27 @@ class SupabaseEntryStore:
         try:
             return [
                 EntryRecord.model_validate(row)
+                for row in rows
+            ]
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def list_calendar_month(
+        self,
+        *,
+        access_token: str,
+        month: date,
+    ) -> list[CalendarDayCount]:
+        rows = await self._rpc(
+            "list_diary_calendar_month",
+            {
+                "p_month": month.isoformat(),
+            },
+            access_token=access_token,
+        )
+        try:
+            return [
+                CalendarDayCount.model_validate(row)
                 for row in rows
             ]
         except ValueError as error:

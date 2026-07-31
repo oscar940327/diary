@@ -25,6 +25,7 @@ from diary_api.auth import (
 )
 from diary_api.config import cors_origins_from_environment
 from diary_api.entries import (
+    CalendarDayCount,
     EntryRecord,
     EntryStoreUnavailable,
     SupabaseEntryStore,
@@ -78,6 +79,21 @@ class EntryDateGroup(BaseModel):
 
     date: date
     entries: list[EntryRecord]
+
+
+class CalendarDay(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    date: date
+    entry_count: int
+
+
+class CalendarMonth(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    month: str
+    time_zone: Literal["Asia/Taipei"]
+    days: list[CalendarDay]
 
 
 class HistoryCursor(BaseModel):
@@ -258,6 +274,45 @@ async def list_today_entries(
     except EntryStoreUnavailable as error:
         raise entry_service_unavailable() from error
     return EntryDateGroup(date=owner_date, entries=entries)
+
+
+@app.get(
+    "/entries/calendar",
+    response_model=CalendarMonth,
+)
+async def list_calendar_month(
+    month: Annotated[
+        str,
+        Query(pattern=r"^\d{4}-(?:0[1-9]|1[0-2])$"),
+    ],
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> CalendarMonth:
+    try:
+        month_start = date.fromisoformat(f"{month}-01")
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Calendar month is invalid",
+        ) from error
+    try:
+        days: list[CalendarDayCount] = await store.list_calendar_month(
+            access_token=owner.access_token,
+            month=month_start,
+        )
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+    return CalendarMonth(
+        month=month,
+        time_zone="Asia/Taipei",
+        days=[
+            CalendarDay(
+                date=day.owner_date,
+                entry_count=day.entry_count,
+            )
+            for day in days
+        ],
+    )
 
 
 @app.get(
