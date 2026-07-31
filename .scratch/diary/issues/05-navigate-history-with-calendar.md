@@ -378,3 +378,91 @@ fixed-range review.
   session handoff. The Personal Website review endpoint is
   `ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
 - Neither repository was pushed. Ticket 06 remains unstarted.
+
+### 2026-08-01 - Fixed-range code review — PASSED
+
+Reviewed the complete fixed three-dot ranges:
+
+- Diary:
+  `891636e3c680a0bb7f032e64a0f779210302ff44...e252cb5bf5d33fc97438cb8d39b8800aacc98edc`.
+- Personal Website:
+  `4bebbb5301260a4f1fa1a4ea594d2904e5243c13...ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
+
+#### Preflight
+
+- All four endpoints resolved.
+- Diary HEAD exactly matched
+  `e252cb5bf5d33fc97438cb8d39b8800aacc98edc`.
+- Personal Website HEAD exactly matched
+  `ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
+- Both worktrees were clean.
+- Both three-dot diffs were non-empty.
+- The complete review covered the Diary range's 2 commits and 3 files and the
+  Personal Website range's 1 commit and 1 file.
+
+#### Standards — PASS
+
+Standards result: **PASS** — 0 blocking and 0 non-blocking findings.
+
+- The Personal Website change is only the test-only clock fix.
+- No timeout, retry, serial mode, skipped test, worker reduction, weakened
+  assertion, or ignored failure was introduced.
+- Diary CI exactly pins Personal Website SHA
+  `ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
+- Ticket comments and `CONTEXT.md` faithfully record the TDD evidence and
+  fixed review ranges.
+- No production Calendar change was made.
+- Ticket 06, editing, revision restore, AI Draft, RAG, and Agent work remain
+  outside the reviewed scope and were not started.
+
+#### Spec — PASS
+
+Spec result: **PASS** — 0 blocking and 0 non-blocking findings.
+
+- `page.clock.pauseAt()` freezes the fake clock before authentication,
+  routing, page setup, and the initial April assertions.
+- Time advances only through the explicit `runFor()` and `fastForward()`
+  calls.
+- The retained assertions verify:
+  - `April 2026`.
+  - April 30 as Today.
+  - `May 2026` after the explicit cross-midnight advance.
+  - May 1 as Today.
+  - The `2026-05` Calendar request.
+  - The next midnight does not take over the month while the owner is
+    browsing April.
+  - May 2 as Today after returning to May.
+- The identical 20-repeat, 4-worker red command against the unchanged base
+  produced 12 passes and 8 failures; every failure stopped at the initial
+  April assertion.
+- The identical green command's authoritative rerun produced 20 passes.
+
+#### Verification
+
+- Personal Website:
+  - Focused regression, 20 repeats with 4 workers: 20 passed.
+  - `npm.cmd run typecheck`: passed.
+  - `npm.cmd run test:e2e`: 18 passed.
+  - `npm.cmd run build`: passed with only the existing classic-script
+    notices.
+  - `npm.cmd run verify:build`: passed.
+  - Fixed-range `git diff --check`: passed.
+- Diary:
+  - `python -m mypy src tests`: passed, 18 source files.
+  - The first sandboxed pytest attempt produced 20 passes and 32 Supabase
+    setup errors caused by a Supabase telemetry user-state `EPERM`; there was
+    no assertion failure.
+  - The authoritative host-permitted pytest rerun produced 52 passes with one
+    existing Starlette/httpx deprecation warning.
+  - The first sandboxed database reset encountered the Supabase telemetry
+    `EPERM`.
+  - On the first host retry, the local Supabase stack had been stopped by the
+    pytest teardown.
+  - After starting the local stack, the authoritative database reset passed
+    and applied all 8 migrations from zero.
+  - `npm.cmd run supabase -- db lint --level warning`: passed with no
+    findings.
+  - Fixed-range `git diff --check`: passed.
+
+Overall verdict: **PASSED**. Ticket 05 passed the code-review gate. The
+reviewed endpoints have not been pushed, and Ticket 06 remains unstarted.
