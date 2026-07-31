@@ -336,15 +336,35 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 05 calendar navigation and its fixed-range review findings have been
-implemented with TDD in Diary and Personal Website and are awaiting a new
-fixed-range code-review session. Empty Calendar anchors before, between, and
-after active Entries remain navigable inside one transaction-snapshot History;
-a truly empty active History does not claim nearby Entries. Calendar jumps
-isolate stale adjacent requests, and Calendar Today refreshes at each
-`Asia/Taipei` midnight without taking over a deliberately browsed month. The
-global composer remains available in both views. Diary CI pins Personal
-Website implementation commit
-`4bebbb5301260a4f1fa1a4ea594d2904e5243c13` so the real cross-repository suite
-exercises the matching implementation. Complete local verification is green.
-Ticket 06 has not started and must wait for Ticket 05 to pass code review.
+Ticket 05 calendar navigation and its review-finding fixes are awaiting a new
+fixed-range code-review session. The latest blocking finding was test-only:
+the Calendar midnight browser regression installed a running fake clock at
+`2026-04-30 23:59:59 Asia/Taipei`, so authentication, routing, and page setup
+could consume the final second before the initial April assertions. A red run
+of the unchanged test with `--repeat-each=20 --workers=4` produced 12 passes
+and 8 failures, all waiting for the missing initial `April 2026` view.
+
+The regression now pauses the installed fake clock at April 30 before any page
+setup. Only explicit `runFor`/`fastForward` calls advance it. The same repeated
+concurrent command is green 20/20 and still verifies April 2026, April 30 as
+Today, the explicit transition to May 2026, May 1 as Today, the `2026-05`
+Calendar request, preservation of an owner-browsed April across the next
+midnight, and May 2 as Today after returning to May. No Calendar production
+implementation changed.
+
+Personal Website verification is green: typecheck passed, all 18 Chromium E2E
+tests passed, the production build and built-site verification passed, and
+`git diff --check` passed. Diary verification is green: mypy passed for 18
+source files, pytest passed 52 tests with the existing Starlette/httpx warning,
+the local Supabase reset applied all eight ordered migrations, schema lint
+returned no findings, and `git diff --check` passed. Diary CI pins Personal
+Website commit `ab99cf8a101e2d0a294a6b1be740ed18b0207e47` through pin commit
+`59e3ae6282c5e6fc4e0abaa65f8a6bc7b28a7194`.
+
+The next fixed-range review starts at Diary
+`891636e3c680a0bb7f032e64a0f779210302ff44` and Personal Website
+`4bebbb5301260a4f1fa1a4ea594d2904e5243c13`. Its Personal Website endpoint is
+`ab99cf8a101e2d0a294a6b1be740ed18b0207e47`; its Diary endpoint is the commit
+containing this documentation record, whose immutable SHA is reported as the
+final local Diary HEAD in the session handoff. Ticket 06 has not started and
+must wait for Ticket 05 to pass that review.

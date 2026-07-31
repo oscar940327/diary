@@ -311,3 +311,70 @@ fixed-range review.
   RPCs callable by the previous application revision.
 - Ticket 06, editing, revision restore, AI Draft, RAG, and Agent behavior were
   not started. No push or code review was performed in this session.
+
+### 2026-08-01 - Taipei-midnight browser regression made deterministic
+
+#### Review finding and scope
+
+- The blocking finding was nondeterminism in Personal Website
+  `tests/e2e/calendar-navigation.spec.ts`, not a demonstrated Calendar
+  production defect. The test installed a running fake clock at
+  `2026-04-30T23:59:59+08:00`; authentication, routing, page load, and Calendar
+  navigation could consume the last second before the initial April checks.
+- The fix is test-only. It pauses the installed clock at the same April 30
+  instant before session and page setup. Time then changes only through the
+  test's explicit `runFor(2_000)` and `fastForward(24 hours)` calls.
+- No timeout, retry, serial mode, worker reduction, skipped assertion, or
+  production Calendar change was introduced. Ticket 06, editing, revision
+  restore, AI Draft, RAG, and Agent work were not started.
+
+#### TDD red and green evidence
+
+- Red command against unchanged Personal Website HEAD
+  `4bebbb5301260a4f1fa1a4ea594d2904e5243c13`:
+  `npm.cmd run test:e2e -- --grep "Calendar updates Taipei Today" --repeat-each=20 --workers=4`.
+- Red result: 12 passed and 8 failed. Every failure timed out on the initial
+  `April 2026` assertion, proving real setup time could advance the fake clock
+  into May before the pre-midnight state was observed.
+- Green command after the clock pause used the identical repeated/concurrent
+  invocation. Result: 20 passed in 12.8 seconds.
+- The retained assertions prove April 2026 and April 30 Today before the
+  explicit advance; May 2026, May 1 Today, and a `2026-05` Calendar load after
+  crossing midnight; no month takeover while the owner browses April across
+  the next midnight; and May 2 Today after returning to May.
+
+#### Verification
+
+- Personal Website:
+  - Focused midnight regression, 20 repeats with 4 workers: 20 passed.
+  - `npm.cmd run typecheck`: passed.
+  - `npm.cmd run test:e2e`: 18 Chromium tests passed.
+  - `npm.cmd run build`: passed with the existing classic-script warnings.
+  - `npm.cmd run verify:build`: passed.
+  - `git diff --check`: passed.
+- Diary:
+  - `python -m mypy src tests`: passed, 18 source files.
+  - `python -m pytest -q`: authoritative host-permitted rerun passed 52 tests
+    with the existing Starlette/httpx warning. The first sandboxed attempt had
+    20 passes and 32 Supabase setup errors from one user-state `EPERM`; it was
+    an environment-only failure.
+  - `npm.cmd run supabase -- db reset`: passed after starting the stopped local
+    stack; all eight ordered migrations applied from a clean database. The
+    first attempt only reported that Supabase was not running.
+  - `npm.cmd run supabase -- db lint --level warning`: passed with no findings.
+  - `git diff --check`: passed.
+
+#### Fixed-range review handoff
+
+- Review bases:
+  - Diary: `891636e3c680a0bb7f032e64a0f779210302ff44`.
+  - Personal Website: `4bebbb5301260a4f1fa1a4ea594d2904e5243c13`.
+- New implementation/pin endpoints:
+  - Diary CI pin: `59e3ae6282c5e6fc4e0abaa65f8a6bc7b28a7194`.
+  - Personal Website test fix:
+    `ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
+- The complete Diary review endpoint is the documentation commit containing
+  this record; its immutable SHA is the final local Diary HEAD reported in the
+  session handoff. The Personal Website review endpoint is
+  `ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
+- Neither repository was pushed. Ticket 06 remains unstarted.
