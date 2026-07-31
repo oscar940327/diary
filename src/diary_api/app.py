@@ -373,29 +373,36 @@ async def list_history_entries(
 
     older_cursor = None
     newer_cursor = None
-    if history.entries:
-        if history.has_older:
-            oldest = history.entries[-1]
-            older_cursor = encode_history_cursor(
-                HistoryCursor(
-                    anchor_date=resolved_anchor,
-                    direction="older",
-                    entry_at=oldest.entry_at,
-                    entry_id=oldest.id,
-                    snapshot=history.snapshot,
-                )
+    if history.has_older:
+        if (
+            history.older_cursor_entry_at is None
+            or history.older_cursor_entry_id is None
+        ):
+            raise entry_service_unavailable()
+        older_cursor = encode_history_cursor(
+            HistoryCursor(
+                anchor_date=resolved_anchor,
+                direction="older",
+                entry_at=history.older_cursor_entry_at,
+                entry_id=history.older_cursor_entry_id,
+                snapshot=history.snapshot,
             )
-        if history.has_newer:
-            newest = history.entries[0]
-            newer_cursor = encode_history_cursor(
-                HistoryCursor(
-                    anchor_date=resolved_anchor,
-                    direction="newer",
-                    entry_at=newest.entry_at,
-                    entry_id=newest.id,
-                    snapshot=history.snapshot,
-                )
+        )
+    if history.has_newer:
+        if (
+            history.newer_cursor_entry_at is None
+            or history.newer_cursor_entry_id is None
+        ):
+            raise entry_service_unavailable()
+        newer_cursor = encode_history_cursor(
+            HistoryCursor(
+                anchor_date=resolved_anchor,
+                direction="newer",
+                entry_at=history.newer_cursor_entry_at,
+                entry_id=history.newer_cursor_entry_id,
+                snapshot=history.snapshot,
             )
+        )
 
     return HistoryPage(
         anchor_date=resolved_anchor,

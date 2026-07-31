@@ -47,6 +47,22 @@ class HistorySlice:
     entries: list[EntryRecord]
     has_older: bool
     has_newer: bool
+    older_cursor_entry_at: datetime | None
+    older_cursor_entry_id: UUID | None
+    newer_cursor_entry_at: datetime | None
+    newer_cursor_entry_id: UUID | None
+    snapshot: str
+
+
+class HistoryMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    has_older: bool
+    has_newer: bool
+    older_cursor_entry_at: datetime | None
+    older_cursor_entry_id: UUID | None
+    newer_cursor_entry_at: datetime | None
+    newer_cursor_entry_id: UUID | None
     snapshot: str
 
 
@@ -142,7 +158,7 @@ class SupabaseEntryStore:
         limit: int,
     ) -> HistorySlice:
         rows = await self._rpc(
-            "list_diary_history_v2",
+            "list_diary_history_v3",
             {
                 "p_anchor_date": anchor_date.isoformat(),
                 "p_direction": direction,
@@ -162,16 +178,23 @@ class SupabaseEntryStore:
             access_token=access_token,
         )
         if not rows:
-            return HistorySlice(
-                entries=[],
-                has_older=False,
-                has_newer=False,
-                snapshot=snapshot or "",
-            )
+            raise EntryStoreUnavailable
 
         first_metadata = {
             "has_older": rows[0].get("has_older"),
             "has_newer": rows[0].get("has_newer"),
+            "older_cursor_entry_at": rows[0].get(
+                "older_cursor_entry_at"
+            ),
+            "older_cursor_entry_id": rows[0].get(
+                "older_cursor_entry_id"
+            ),
+            "newer_cursor_entry_at": rows[0].get(
+                "newer_cursor_entry_at"
+            ),
+            "newer_cursor_entry_id": rows[0].get(
+                "newer_cursor_entry_id"
+            ),
             "snapshot": rows[0].get("snapshot"),
         }
         if not all(
@@ -186,26 +209,41 @@ class SupabaseEntryStore:
             entry_row = dict(row)
             entry_row.pop("has_older", None)
             entry_row.pop("has_newer", None)
+            entry_row.pop("older_cursor_entry_at", None)
+            entry_row.pop("older_cursor_entry_id", None)
+            entry_row.pop("newer_cursor_entry_at", None)
+            entry_row.pop("newer_cursor_entry_id", None)
             entry_row.pop("snapshot", None)
+            if entry_row.get("id") is None:
+                if any(value is not None for value in entry_row.values()):
+                    raise EntryStoreUnavailable
+                continue
             entry_rows.append(entry_row)
 
         try:
-            has_older = first_metadata["has_older"]
-            has_newer = first_metadata["has_newer"]
-            parsed_snapshot = first_metadata["snapshot"]
-            if not isinstance(has_older, bool) or not isinstance(
-                has_newer,
-                bool,
-            ) or not isinstance(parsed_snapshot, str) or not parsed_snapshot:
+            metadata = HistoryMetadata.model_validate(first_metadata)
+            if not metadata.snapshot:
+                raise ValueError
+            if metadata.has_older != (
+                metadata.older_cursor_entry_at is not None
+                and metadata.older_cursor_entry_id is not None
+            ) or metadata.has_newer != (
+                metadata.newer_cursor_entry_at is not None
+                and metadata.newer_cursor_entry_id is not None
+            ):
                 raise ValueError
             return HistorySlice(
                 entries=[
                     EntryRecord.model_validate(row)
                     for row in entry_rows
                 ],
-                has_older=has_older,
-                has_newer=has_newer,
-                snapshot=parsed_snapshot,
+                has_older=metadata.has_older,
+                has_newer=metadata.has_newer,
+                older_cursor_entry_at=metadata.older_cursor_entry_at,
+                older_cursor_entry_id=metadata.older_cursor_entry_id,
+                newer_cursor_entry_at=metadata.newer_cursor_entry_at,
+                newer_cursor_entry_id=metadata.newer_cursor_entry_id,
+                snapshot=metadata.snapshot,
             )
         except ValueError as error:
             raise EntryStoreUnavailable from error
