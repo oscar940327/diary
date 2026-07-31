@@ -195,3 +195,119 @@ Spec result: **FAIL** — 2 blocking and 1 non-blocking findings.
 Overall verdict: **FAILED**. Standards passed, but Spec has blocking findings;
 Ticket 06 must not start until they are fixed and Ticket 05 passes a new
 fixed-range review.
+
+### 2026-08-01 - Review findings fixed, awaiting new fixed-range review
+
+- Review bases retained for the next fixed-range review:
+  - Diary:
+    `0b1aae946978b3f21c30c48123fe516a13fcf212`
+  - Personal Website:
+    `8fd2fa6835b16fcf66095862dcbc30d182d920dd`
+- New implementation SHAs:
+  - Diary:
+    `bad9832ad2795e3037734d7330c51c31b190851b`
+  - Personal Website:
+    `4bebbb5301260a4f1fa1a4ea594d2904e5243c13`
+
+#### TDD evidence
+
+- Empty anchor before the first active Entry:
+  - Red command:
+    `python -m pytest -q tests/system/test_calendar_navigation.py::test_empty_calendar_date_before_first_entry_can_reach_newer_history`
+  - Red failure: the selected empty anchor returned
+    `newer_cursor == None`.
+  - Green: the same real-HTTP test passed and followed the returned cursor to
+    the first newer Entry while retaining the selected anchor and no older
+    cursor.
+- Calendar jump versus an in-flight adjacent request:
+  - Red command:
+    `npm.cmd run test:e2e -- --grep "calendar jump isolates"`
+  - Red failure: Playwright received one visible
+    `Stale Entry from the old snapshot.` after the new anchor had rendered.
+  - Green: the focused Chromium test passed after adding request abort plus
+    generation validation and clearing all old-anchor adjacent and scroll
+    state.
+- Calendar Today across an `Asia/Taipei` midnight:
+  - Red command:
+    `npm.cmd run test:e2e -- --grep "Calendar updates Taipei Today"`
+  - Red failure: `May 2026` did not appear after the fake clock crossed the
+    Taipei April/May boundary.
+  - Green: the focused fake-clock test passed; Calendar follows the current
+    Taipei month across midnight but preserves a month the owner deliberately
+    browsed, and Today advances again when that month is reopened.
+- Completely empty active History:
+  - Red command:
+    `npm.cmd run test:e2e -- --grep "no active History exists"`
+  - Red failure: the true no-active-Entry explanation was absent.
+  - Green: the focused browser test passed with no nearby-history claim and no
+    adjacent controls.
+- New RPC RLS sentinel:
+  - Red command:
+    `python -m pytest -q tests/system/test_calendar_navigation.py::test_calendar_excludes_trashed_entries_and_preserves_owner_defenses`
+  - Red failure: a non-owner direct RPC call received one all-null metadata
+    sentinel instead of an empty result.
+  - Green: the focused real-PostgREST test passed after restricting sentinel
+    output through the singleton owner registry and its RLS policy.
+
+#### Review finding resolutions
+
+- Added ordered migration
+  `20260801130000_locate_empty_history_anchors.sql` with additive
+  `list_diary_history_v3`. It returns bounded page data plus cursor metadata
+  even for an owner zero-row initial page. The synthetic newer boundary uses
+  the same transaction snapshot, PostgreSQL microsecond precision, and UUID
+  tuple ordering as ordinary pages. Existing `list_diary_history` and
+  `list_diary_history_v2` remain unchanged for expand-contract rollback
+  compatibility.
+- Empty dates now behave as one continuous History position: before-first has
+  only a newer path, between-Entries has both paths, after-last starts with
+  older History, and a database with no active Entry returns neither path.
+  Responses remain page-limited and do not download lifetime History.
+- Calendar jumps abort the active adjacent request, increment the History
+  generation, and clear `pendingHistoryAnchor`, `adjacentLoad`,
+  `adjacentError`, `userScrolledHistory`, old Entries, and both old cursors.
+  Late transport completion is ignored when its generation is stale.
+- `ownerClock.ts` is now the shared Taipei clock/date utility used by Calendar
+  and Entry capture/History. Calendar schedules a Taipei-midnight Today
+  refresh and only auto-follows the next month when the owner has not browsed
+  elsewhere.
+
+#### Complete verification
+
+- Diary:
+  - `python -m mypy src tests`: passed, 18 source files.
+  - `python -m pytest -q`: 52 passed with one existing Starlette/httpx
+    deprecation warning.
+  - `npm.cmd run supabase -- db reset`: passed; all eight ordered migrations
+    applied from a clean local database.
+  - `npm.cmd run supabase -- db lint --level warning`: passed with no schema
+    findings.
+  - `git diff --check`: passed.
+- Personal Website:
+  - `npm.cmd run typecheck`: passed.
+  - `npm.cmd run test:e2e`: 18 Chromium tests passed.
+  - `npm.cmd run build`: passed with the existing classic-script warnings.
+  - `npm.cmd run verify:build`: passed.
+  - `git diff --check`: passed.
+- Credential-signature scans found no private-key, Supabase secret-key,
+  OpenRouter key, GitHub token, or JWT literal in either tracked repository or
+  the built Personal Website output. Browser assets retain only public
+  configuration boundaries.
+
+#### Acceptance and scope recheck
+
+- History/Calendar switching and global New Entry remain available on desktop
+  and mobile.
+- Calendar month counts remain active/non-trashed, metadata-only, Taipei-bound,
+  and do not join Entry Revisions or return Original Content.
+- Calendar selection remains an anchor into reverse-chronological continuous
+  History, with newer above, older below, bounded adjacent loading, stable
+  snapshot cursors, microsecond precision, UUID tie-break, and scroll-anchor
+  preservation.
+- FastAPI `require_owner`, caller-token RPC access, singleton-owner RLS, and
+  security-invoker execution remain defense in depth. The new direct non-owner
+  RPC regression returns no rows.
+- The migration is ordered, versioned, additive, and leaves both prior History
+  RPCs callable by the previous application revision.
+- Ticket 06, editing, revision restore, AI Draft, RAG, and Agent behavior were
+  not started. No push or code review was performed in this session.

@@ -336,13 +336,15 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 05 calendar navigation has been implemented with TDD in Diary and
-Personal Website and is awaiting a new-session fixed-range code review. A
-requested `Asia/Taipei` month returns only active Entry dates and counts;
-selecting any date enters the existing continuous History at that anchor,
-including a stable empty-date position and both newer and older cursor paths.
-The global composer remains available in both views. Diary CI pins Personal
+Ticket 05 calendar navigation and its fixed-range review findings have been
+implemented with TDD in Diary and Personal Website and are awaiting a new
+fixed-range code-review session. Empty Calendar anchors before, between, and
+after active Entries remain navigable inside one transaction-snapshot History;
+a truly empty active History does not claim nearby Entries. Calendar jumps
+isolate stale adjacent requests, and Calendar Today refreshes at each
+`Asia/Taipei` midnight without taking over a deliberately browsed month. The
+global composer remains available in both views. Diary CI pins Personal
 Website implementation commit
-`8fd2fa6835b16fcf66095862dcbc30d182d920dd` so the real cross-repository suite
+`4bebbb5301260a4f1fa1a4ea594d2904e5243c13` so the real cross-repository suite
 exercises the matching implementation. Complete local verification is green.
 Ticket 06 has not started and must wait for Ticket 05 to pass code review.
