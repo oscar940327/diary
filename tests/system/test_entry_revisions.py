@@ -257,6 +257,87 @@ def test_edit_marks_old_processing_stale_and_creates_new_obligation(
     assert obligations[0]["stale_at"] is not None
 
 
+def test_owner_cannot_patch_current_revision_pointer_directly(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="The atomic edit boundary must own this pointer.",
+        idempotency_key="deny-direct-current-revision-patch",
+    )
+    edit_response = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        expected_revision_id=original["current_revision_id"],
+        content="Revision two must remain current.",
+    )
+    assert edit_response.status_code == 200, edit_response.text
+    edited = edit_response.json()
+
+    direct_patch_response = httpx.patch(
+        (
+            f"{local_supabase.api_url}/rest/v1/entries"
+            f"?id=eq.{original['id']}"
+        ),
+        headers=_postgrest_headers(local_supabase, owner_access_token),
+        json={"current_revision_id": original["current_revision_id"]},
+    )
+
+    assert direct_patch_response.status_code == 403
+    detail_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json() == edited
+
+
+def test_owner_cannot_patch_processing_staleness_directly(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="The edit boundary must own processing staleness.",
+        idempotency_key="deny-direct-processing-stale-patch",
+    )
+    edit_response = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        expected_revision_id=original["current_revision_id"],
+        content="Revision two creates the stale marker.",
+    )
+    assert edit_response.status_code == 200, edit_response.text
+
+    direct_patch_response = httpx.patch(
+        (
+            f"{local_supabase.api_url}/rest/v1/ai_processing"
+            f"?entry_revision_id=eq.{original['current_revision_id']}"
+        ),
+        headers=_postgrest_headers(local_supabase, owner_access_token),
+        json={"stale_at": None},
+    )
+
+    assert direct_patch_response.status_code == 403
+    processing_response = httpx.get(
+        (
+            f"{local_supabase.api_url}/rest/v1/ai_processing"
+            "?select=stale_at"
+            f"&entry_revision_id=eq.{original['current_revision_id']}"
+        ),
+        headers=_postgrest_headers(local_supabase, owner_access_token),
+    )
+    assert processing_response.status_code == 200, processing_response.text
+    assert processing_response.json()[0]["stale_at"] is not None
+
+
 def test_blank_edit_is_rejected_without_changing_data(
     diary_api: str,
     owner_access_token: str,
@@ -337,6 +418,25 @@ def test_entry_revisions_are_owner_only_at_api_and_rls_boundaries(
     )
     assert revisions_response.status_code == 200
     assert revisions_response.json() == []
+
+    denied_pointer_patch = httpx.patch(
+        (
+            f"{local_supabase.api_url}/rest/v1/entries"
+            f"?id=eq.{original['id']}"
+        ),
+        headers=_postgrest_headers(local_supabase, non_owner_access_token),
+        json={"current_revision_id": original["current_revision_id"]},
+    )
+    denied_stale_patch = httpx.patch(
+        (
+            f"{local_supabase.api_url}/rest/v1/ai_processing"
+            f"?entry_revision_id=eq.{original['current_revision_id']}"
+        ),
+        headers=_postgrest_headers(local_supabase, non_owner_access_token),
+        json={"stale_at": None},
+    )
+    assert denied_pointer_patch.status_code == 403
+    assert denied_stale_patch.status_code == 403
 
     direct_edit_response = httpx.post(
         (

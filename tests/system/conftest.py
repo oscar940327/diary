@@ -416,7 +416,7 @@ def entry_update_rls_denial(
     _execute_local_database_sql(
         f'create policy "{policy_name}" '
         "on public.entries as restrictive "
-        "for update to authenticated using (true) with check (false);"
+        "for update to diary_edit_mutator using (true) with check (false);"
     )
     try:
         yield

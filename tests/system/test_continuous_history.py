@@ -1,6 +1,6 @@
 from collections.abc import Iterable
 import subprocess
-from typing import Protocol
+from typing import Protocol, cast
 
 import httpx
 
@@ -156,6 +156,25 @@ def _capture_entries(
         assert response.status_code == 201
         captured_entries.append(response.json())
     return captured_entries
+
+
+def _replace_original_content(
+    diary_api: str,
+    access_token: str,
+    *,
+    entry: dict[str, object],
+    content: str,
+) -> dict[str, object]:
+    response = httpx.put(
+        f"{diary_api}/entries/{entry['id']}/original-content",
+        headers=_owner_headers(access_token),
+        json={
+            "expected_current_revision_id": entry["current_revision_id"],
+            "original_content": content,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return cast(dict[str, object], response.json())
 
 
 def _page_entries(
@@ -447,6 +466,148 @@ def test_history_snapshot_excludes_capture_committed_between_cursor_requests(
         }
     finally:
         pending_capture.close()
+
+
+def test_history_snapshot_keeps_an_unvisited_entry_edited_between_pages(
+    diary_api: str,
+    owner_access_token: str,
+) -> None:
+    captured = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            ("history-edit-day-1", "Snapshot edit day 1", "2099-11-01T12:00:00+08:00"),
+            ("history-edit-day-2-low", "Snapshot edit day 2 low", "2099-11-02T12:00:00.000100+08:00"),
+            ("history-edit-day-2-high", "Snapshot edit day 2 high", "2099-11-02T12:00:00.000900+08:00"),
+            ("history-edit-day-3", "Snapshot edit day 3", "2099-11-03T12:00:00+08:00"),
+            ("history-edit-day-4", "Snapshot edit day 4", "2099-11-04T12:00:00+08:00"),
+            ("history-edit-day-5", "Snapshot edit day 5", "2099-11-05T12:00:00+08:00"),
+            ("history-edit-day-6-a", "Snapshot edit day 6 A", "2099-11-06T12:00:00+08:00"),
+            ("history-edit-day-6-b", "Snapshot edit day 6 B", "2099-11-06T12:00:00+08:00"),
+            ("history-edit-day-7", "Snapshot edit day 7", "2099-11-07T12:00:00+08:00"),
+        ),
+    )
+    by_content = {entry["original_content"]: entry for entry in captured}
+
+    baseline_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={"anchor_date": "2099-11-07", "limit": 50},
+    )
+    assert baseline_response.status_code == 200, baseline_response.text
+    baseline_page = baseline_response.json()
+    baseline_entries = _page_entries(baseline_page)
+    baseline_cursor = baseline_page["older_cursor"]
+    while baseline_cursor is not None:
+        response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "direction": "older",
+                "cursor": baseline_cursor,
+                "limit": 50,
+            },
+        )
+        assert response.status_code == 200, response.text
+        baseline_page = response.json()
+        baseline_entries.extend(_page_entries(baseline_page))
+        baseline_cursor = baseline_page["older_cursor"]
+    baseline_ids = [str(entry["id"]) for entry in baseline_entries]
+
+    initial_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={"anchor_date": "2099-11-04", "limit": 2},
+    )
+    assert initial_response.status_code == 200, initial_response.text
+    initial = initial_response.json()
+    assert _page_contents(initial) == [
+        "Snapshot edit day 4",
+        "Snapshot edit day 3",
+    ]
+
+    edit_target = by_content["Snapshot edit day 2 high"]
+    edited_target = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry=edit_target,
+        content="Snapshot edit day 2 high - edited after initial page",
+    )
+
+    older_entries: list[dict[str, object]] = []
+    older_cursor = initial["older_cursor"]
+    while older_cursor is not None:
+        response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "direction": "older",
+                "cursor": older_cursor,
+                "limit": 2,
+            },
+        )
+        assert response.status_code == 200, response.text
+        page = response.json()
+        older_entries.extend(_page_entries(page))
+        older_cursor = page["older_cursor"]
+
+    newer_entries: list[dict[str, object]] = []
+    newer_cursor = initial["newer_cursor"]
+    while newer_cursor is not None:
+        response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={
+                "direction": "newer",
+                "cursor": newer_cursor,
+                "limit": 2,
+            },
+        )
+        assert response.status_code == 200, response.text
+        page = response.json()
+        newer_entries = _page_entries(page) + newer_entries
+        newer_cursor = page["newer_cursor"]
+
+    traversed = newer_entries + _page_entries(initial) + older_entries
+    day_6_ids = sorted(
+        (
+            str(by_content["Snapshot edit day 6 A"]["id"]),
+            str(by_content["Snapshot edit day 6 B"]["id"]),
+        ),
+        reverse=True,
+    )
+    expected_created_ids = [
+        str(by_content["Snapshot edit day 7"]["id"]),
+        *day_6_ids,
+        str(by_content["Snapshot edit day 5"]["id"]),
+        str(by_content["Snapshot edit day 4"]["id"]),
+        str(by_content["Snapshot edit day 3"]["id"]),
+        str(edit_target["id"]),
+        str(by_content["Snapshot edit day 2 low"]["id"]),
+        str(by_content["Snapshot edit day 1"]["id"]),
+    ]
+    traversed_ids = [str(entry["id"]) for entry in traversed]
+    assert traversed_ids == baseline_ids
+    assert len(traversed_ids) == len(set(traversed_ids))
+    captured_ids = {str(entry["id"]) for entry in captured}
+    assert [
+        entry_id for entry_id in traversed_ids if entry_id in captured_ids
+    ] == expected_created_ids
+    assert next(
+        entry for entry in traversed if entry["id"] == edit_target["id"]
+    ) == edited_target
+
+    refreshed_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={"anchor_date": "2099-11-02", "limit": 2},
+    )
+    assert refreshed_response.status_code == 200, refreshed_response.text
+    refreshed = _page_entries(refreshed_response.json())
+    assert refreshed == [
+        edited_target,
+        by_content["Snapshot edit day 2 low"],
+    ]
 
 
 def test_history_groups_complete_content_at_taipei_date_boundaries(

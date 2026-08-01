@@ -247,7 +247,7 @@ class SupabaseEntryStore:
         limit: int,
     ) -> HistorySlice:
         rows = await self._rpc(
-            "list_diary_history_v3",
+            "list_diary_history_v4",
             {
                 "p_anchor_date": anchor_date.isoformat(),
                 "p_direction": direction,
