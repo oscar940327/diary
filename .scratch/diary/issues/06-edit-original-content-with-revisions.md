@@ -292,3 +292,150 @@ This review did not change implementation code, did not update `CONTEXT.md`
 because the review failed, did not begin Ticket 07, and did not push either
 repository. The only authorized change from this session is this Diary
 review-documentation record.
+
+### 2026-08-02 - Blocking review fixes implemented, awaiting new review
+
+- New Diary implementation SHA:
+  `49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`.
+- Personal Website was not modified. Its implementation endpoint remains
+  `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+
+#### Preflight
+
+- Both worktrees were clean on `main` before implementation.
+- After fresh fetches, Diary `HEAD` and `origin/main` were both
+  `524d15311bda3ad624a7b5eea499c2942fe62071`.
+- After a fresh fetch, Personal Website `HEAD` and `origin/main` were both
+  `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+- GitHub Actions were green at both exact starting endpoints:
+  - Diary `Backend checks`, run
+    [30710883223](https://github.com/oscar940327/diary/actions/runs/30710883223),
+    completed successfully for `524d15311bda3ad624a7b5eea499c2942fe62071`.
+  - Personal Website `Website checks and Pages`, run
+    [30709120399](https://github.com/oscar940327/my-personal-website/actions/runs/30709120399),
+    and `pages build and deployment`, run
+    [30709120073](https://github.com/oscar940327/my-personal-website/actions/runs/30709120073),
+    completed successfully for
+    `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+
+#### TDD RED evidence
+
+- Atomic current-pointer boundary:
+  - Command:
+    `python -m pytest -q tests/system/test_entry_revisions.py::test_owner_cannot_patch_current_revision_pointer_directly`.
+  - The real owner-token PostgREST PATCH returned `204 No Content` instead of
+    the required `403`, proving that the owner could point an Entry back to a
+    historical revision outside the edit RPC.
+- Processing-staleness boundary:
+  - Command:
+    `python -m pytest -q tests/system/test_entry_revisions.py::test_owner_cannot_patch_processing_staleness_directly`.
+  - The real owner-token PostgREST PATCH returned `204 No Content` instead of
+    `403`, proving that the owner could clear a superseded revision's
+    `stale_at` independently.
+- RLS rollback after introducing the narrow mutation principal:
+  - Command:
+    `python -m pytest -q tests/system/test_entry_revisions.py::test_fastapi_edit_uses_owner_token_for_postgres_rls`.
+  - The first run returned `200` instead of `503` because the injected
+    restrictive policy still targeted `authenticated` rather than the new
+    function owner. This showed that the test had to deny the actual
+    `diary_edit_mutator` RLS principal.
+- Immutable History membership:
+  - Command:
+    `python -m pytest -q tests/system/test_continuous_history.py::test_history_snapshot_keeps_an_unvisited_entry_edited_between_pages`.
+  - After the initial middle page, another client edited an unvisited Entry.
+    Completing both cursor directions returned eight of the nine expected
+    test Entries; the edited Entry was omitted because v3 tested the current
+    mutable `entries.xmin` against the original snapshot.
+- The first sandboxed pointer-test attempt stopped in Supabase CLI setup with
+  the known Windows Bun `EPERM` user-file error. The identical authorized run
+  reached the `204` product assertion above; only that run is RED evidence.
+
+#### TDD GREEN evidence
+
+- The two direct owner PATCH focused commands each passed after caller UPDATE
+  grants were removed and the edit RPC received its narrow mutation role.
+- The focused RLS command passed after its restrictive policy targeted
+  `diary_edit_mutator`. The original Entry detail and single-revision history
+  proved that staling the old obligation, inserting the new revision and
+  pending obligation, and moving the current pointer all rolled back.
+- The non-owner authorization test passed with FastAPI `401`, direct edit RPC
+  RLS denial, and `403` for both raw PATCH paths.
+- `python -m pytest -q tests/system/test_entry_revisions.py`: 8 passed,
+  covering sequential immutable revisions, current detail and History,
+  stale-edit conflict, processing obligations, blank rejection, owner and
+  non-owner boundaries, and transactional RLS rollback.
+- The concurrent-edit History focused command passed after application
+  transition to v4. The original snapshot membership appeared exactly once,
+  both directions reached their ends, full microsecond ordering preceded the
+  UUID tie-break, and both the current and a fresh traversal displayed the
+  edited current revision.
+- The equal-time, overlapping-capture, and concurrent-edit History snapshot
+  commands passed together: 3 passed.
+
+#### Implementation
+
+- Ordered migration
+  `20260802120000_restrict_atomic_edit_mutations.sql` adds the no-login,
+  non-superuser, `NOINHERIT`, `NOBYPASSRLS` `diary_edit_mutator` role. It has
+  only the table and column privileges required by the existing atomic edit
+  function.
+- The edit function keeps the same PostgREST contract but now executes as the
+  narrow role with `row_security = on`. An equivalent request-UID helper
+  reads the caller JWT claims without using a backend or service-role token;
+  owner-scoped policies apply that identity to the mutation role.
+- `authenticated` no longer has direct UPDATE permission for
+  `entries.current_revision_id`, `ai_processing.stale_at`, or their edit-only
+  `updated_at` columns. FastAPI still calls PostgREST with the verified owner
+  token, while PostgreSQL RLS independently authorizes every affected row.
+- Ordered migration
+  `20260802130000_stabilize_history_membership.sql` additively stores each
+  Entry's immutable capture transaction identity in
+  `entries.history_membership_xid`; a trigger rejects later changes.
+- The migration leaves v1, v2, and v3 History RPCs available and adds
+  contract-compatible `list_diary_history_v4`. V4 uses
+  `history_membership_xid` with `pg_visible_in_snapshot()` instead of the
+  mutable current tuple's `xmin`.
+- FastAPI's store now calls v4. Cursor encoding, HTTP response shapes,
+  microsecond/UUID ordering, bidirectional loading, and the Personal Website
+  API contract are unchanged. The immediately previous application revision
+  remains compatible with the expanded schema and its existing v3 RPC.
+
+#### Complete verification
+
+- Diary:
+  - `python -m mypy src tests`: passed, 19 source files.
+  - `python -m pytest -q`: passed, 61 tests, with the existing
+    Starlette/httpx deprecation warning.
+  - `npm.cmd run supabase -- db reset`: passed; all 11 ordered migrations
+    applied from a clean local database.
+  - `npm.cmd run supabase -- db lint --level warning`: passed with no schema
+    findings.
+  - `git diff --check`: passed.
+- Personal Website, unchanged at
+  `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`:
+  - `npm.cmd run typecheck`: passed.
+  - `npm.cmd run test:e2e`: 19 Chromium tests passed using four workers.
+  - `npm.cmd run build`: passed with only the existing classic-script notices.
+  - `npm.cmd run verify:build`: passed.
+  - `git diff --check`: passed, and the worktree remained clean.
+- The pushed Diary implementation SHA passed GitHub Actions:
+  - `Backend checks`, run
+    [30712354034](https://github.com/oscar940327/diary/actions/runs/30712354034),
+    completed successfully for
+    `49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`.
+- Final mutation-boundary inspection confirmed that authenticated callers
+  have neither direct column UPDATE privilege, the function owner is
+  `diary_edit_mutator`, and that role cannot log in or bypass RLS.
+
+#### Scope and next fixed ranges
+
+- No AI Draft generation, worker, Queue publication, RAG, revision restore,
+  Entry Time edit, Trash, or non-blocking review cleanup was implemented.
+- Ticket 07 has not started.
+- This implementation session did not run code review. Ticket 06 still needs
+  a fresh fixed-range review before Ticket 07 may begin.
+- Next fixed review ranges:
+  - Diary:
+    `b47070d3ed3acb97909c9d59166ba8bed6415cfb...49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`.
+  - Personal Website:
+    `ab99cf8a101e2d0a294a6b1be740ed18b0207e47...e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
