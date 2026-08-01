@@ -408,6 +408,24 @@ def entry_insert_rls_denial(
         )
 
 
+@pytest.fixture
+def entry_update_rls_denial(
+    provisioned_users: LocalSupabase,
+) -> Iterator[None]:
+    policy_name = "system test denies entry updates"
+    _execute_local_database_sql(
+        f'create policy "{policy_name}" '
+        "on public.entries as restrictive "
+        "for update to authenticated using (true) with check (false);"
+    )
+    try:
+        yield
+    finally:
+        _execute_local_database_sql(
+            f'drop policy "{policy_name}" on public.entries;'
+        )
+
+
 def _wait_until_ready(
     process: subprocess.Popen[bytes],
     url: str,

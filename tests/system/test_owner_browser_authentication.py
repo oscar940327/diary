@@ -58,6 +58,58 @@ def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
         saved_entry.get_by_text("AI processing pending")
     ).to_be_visible()
 
+    saved_entry.get_by_text("Entry actions", exact=True).click()
+    saved_entry.get_by_role(
+        "button",
+        name="Edit Original Content",
+    ).click()
+    editor = page.get_by_role("dialog", name="Edit Original Content")
+    replacement = editor.get_by_label("Replacement Original Content")
+    expect(replacement).to_have_value(
+        "Mobile system capture keeps the complete Original Content."
+    )
+    replacement.fill(
+        "Mobile edit saves a complete replacement as Revision 2."
+    )
+    editor.get_by_role("button", name="Save replacement").click()
+
+    edited_entry = page.locator("article.diary-entry").filter(
+        has_text="Mobile edit saves a complete replacement as Revision 2."
+    )
+    expect(edited_entry).to_be_visible()
+    expect(
+        edited_entry.get_by_text(
+            "Mobile system capture keeps the complete Original Content.",
+            exact=True,
+        )
+    ).not_to_be_visible()
+
+    edited_entry.get_by_text("Entry actions", exact=True).click()
+    edited_entry.get_by_role(
+        "button",
+        name="View revision history",
+    ).click()
+    revision_history = page.get_by_role("dialog", name="Revision History")
+    expect(revision_history.get_by_text("Revision 2 · Current")).to_be_visible()
+    expect(revision_history.get_by_text("Revision 1", exact=True)).to_be_visible()
+    expect(
+        revision_history.get_by_text(
+            "Mobile edit saves a complete replacement as Revision 2.",
+            exact=True,
+        )
+    ).to_be_visible()
+    expect(
+        revision_history.get_by_text(
+            "Mobile system capture keeps the complete Original Content.",
+            exact=True,
+        )
+    ).to_be_visible()
+    expect(revision_history.locator("time")).to_have_count(2)
+    revision_history.get_by_role(
+        "button",
+        name="Close revision history",
+    ).click()
+
     page.reload()
     expect(
         page.get_by_text(
@@ -67,7 +119,7 @@ def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
     ).to_be_visible()
     expect(
         page.get_by_text(
-            "Mobile system capture keeps the complete Original Content.",
+            "Mobile edit saves a complete replacement as Revision 2.",
             exact=True,
         )
     ).to_be_visible()

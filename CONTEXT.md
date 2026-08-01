@@ -336,11 +336,11 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 05 calendar navigation is complete. Its final fixed-range review passed
-Standards and Spec with 0 blocking and 0 non-blocking findings. The reviewed
-endpoints and closing review record have been pushed: Diary commit
-`5e8ce14a87621e2524ec85d6cbd2bacc84590466` and Personal Website commit
-`ab99cf8a101e2d0a294a6b1be740ed18b0207e47`. Diary `Backend checks`, Personal
-Website `Website checks and Pages`, and Personal Website Pages deployment all
-completed successfully at those commits. Ticket 06 is the next
-dependency-ready Ticket and has not started.
+Ticket 06 Original Content editing with immutable revisions is implemented and
+awaiting a fresh fixed-range code-review session. Its fixed review bases are
+Diary `b47070d3ed3acb97909c9d59166ba8bed6415cfb` and Personal Website
+`ab99cf8a101e2d0a294a6b1be740ed18b0207e47`; the Personal Website
+implementation is `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`, and the Diary
+implementation endpoint is the commit containing the Ticket 06 completion
+record. Ticket 07 revision restore has not started and must wait for Ticket 06
+to pass review.

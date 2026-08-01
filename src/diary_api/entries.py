@@ -16,6 +16,10 @@ class EntryStoreUnavailable(Exception):
     pass
 
 
+class EntryNotFound(Exception):
+    pass
+
+
 class EntryRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -40,6 +44,17 @@ class CalendarDayCount(BaseModel):
 
     owner_date: date
     entry_count: int
+
+
+class EntryRevisionRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    entry_id: UUID
+    revision_number: int
+    original_content: str
+    created_at: datetime
+    is_current: bool
 
 
 @dataclass(frozen=True)
@@ -122,6 +137,80 @@ class SupabaseEntryStore:
                 EntryRecord.model_validate(row)
                 for row in rows
             ]
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def get(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+    ) -> EntryRecord:
+        rows = await self._rpc(
+            "get_diary_entry",
+            {"p_entry_id": str(entry_id)},
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        if len(rows) != 1:
+            raise EntryStoreUnavailable
+        try:
+            return EntryRecord.model_validate(rows[0])
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def list_revisions(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+    ) -> list[EntryRevisionRecord]:
+        rows = await self._rpc(
+            "list_diary_entry_revisions",
+            {"p_entry_id": str(entry_id)},
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        try:
+            return [
+                EntryRevisionRecord.model_validate(row)
+                for row in rows
+            ]
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def replace_original_content(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+        expected_current_revision_id: UUID,
+        original_content: str,
+    ) -> tuple[EntryRecord, bool]:
+        rows = await self._rpc(
+            "edit_diary_entry_original_content",
+            {
+                "p_entry_id": str(entry_id),
+                "p_expected_current_revision_id": str(
+                    expected_current_revision_id
+                ),
+                "p_original_content": original_content,
+            },
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        if len(rows) != 1:
+            raise EntryStoreUnavailable
+
+        row = dict(rows[0])
+        edit_applied = row.pop("edit_applied", None)
+        if not isinstance(edit_applied, bool):
+            raise EntryStoreUnavailable
+        try:
+            return EntryRecord.model_validate(row), edit_applied
         except ValueError as error:
             raise EntryStoreUnavailable from error
 

@@ -16,6 +16,7 @@ from fastapi import (
     status,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from diary_api.auth import (
@@ -26,7 +27,9 @@ from diary_api.auth import (
 from diary_api.config import cors_origins_from_environment
 from diary_api.entries import (
     CalendarDayCount,
+    EntryNotFound,
     EntryRecord,
+    EntryRevisionRecord,
     EntryStoreUnavailable,
     SupabaseEntryStore,
     entry_store,
@@ -72,6 +75,28 @@ class CreateEntryRequest(BaseModel):
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Entry Time must include a UTC offset")
         return value.astimezone(UTC)
+
+
+class ReplaceOriginalContentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_current_revision_id: UUID
+    original_content: str
+
+    @field_validator("original_content")
+    @classmethod
+    def original_content_cannot_be_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Original Content cannot be blank")
+        return value
+
+
+class EntryRevisionHistory(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_id: UUID
+    current_revision_id: UUID
+    revisions: list[EntryRevisionRecord]
 
 
 class EntryDateGroup(BaseModel):
@@ -121,7 +146,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=list(cors_origins_from_environment()),
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=[
         "Accept",
         "Authorization",
@@ -159,6 +184,13 @@ def entry_service_unavailable() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         detail="Entry service unavailable",
+    )
+
+
+def entry_not_found() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Entry not found",
     )
 
 
@@ -410,3 +442,94 @@ async def list_history_entries(
         older_cursor=older_cursor,
         newer_cursor=newer_cursor,
     )
+
+
+@app.get(
+    "/entries/{entry_id}",
+    response_model=EntryRecord,
+)
+async def get_entry(
+    entry_id: UUID,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> EntryRecord:
+    try:
+        return await store.get(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+
+
+@app.get(
+    "/entries/{entry_id}/revisions",
+    response_model=EntryRevisionHistory,
+)
+async def list_entry_revisions(
+    entry_id: UUID,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> EntryRevisionHistory:
+    try:
+        revisions = await store.list_revisions(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+    current_revision = next(
+        (revision for revision in revisions if revision.is_current),
+        None,
+    )
+    if current_revision is None:
+        raise entry_service_unavailable()
+    return EntryRevisionHistory(
+        entry_id=entry_id,
+        current_revision_id=current_revision.id,
+        revisions=revisions,
+    )
+
+
+@app.put(
+    "/entries/{entry_id}/original-content",
+    response_model=EntryRecord,
+)
+async def replace_entry_original_content(
+    entry_id: UUID,
+    request: ReplaceOriginalContentRequest,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> EntryRecord | JSONResponse:
+    try:
+        entry, edit_applied = await store.replace_original_content(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+            expected_current_revision_id=(
+                request.expected_current_revision_id
+            ),
+            original_content=request.original_content,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+
+    if not edit_applied:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": {
+                    "code": "stale_entry_revision",
+                    "message": (
+                        "Original Content changed after this editor opened."
+                    ),
+                    "current_entry": entry.model_dump(mode="json"),
+                }
+            },
+        )
+    return entry
