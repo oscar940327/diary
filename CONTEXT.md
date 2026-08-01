@@ -336,11 +336,14 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 06 Original Content editing with immutable revisions is implemented and
-awaiting a fresh fixed-range code-review session. Its fixed review bases are
-Diary `b47070d3ed3acb97909c9d59166ba8bed6415cfb` and Personal Website
-`ab99cf8a101e2d0a294a6b1be740ed18b0207e47`; the Personal Website
-implementation is `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`, and the Diary
-implementation endpoint is the commit containing the Ticket 06 completion
-record. Ticket 07 revision restore has not started and must wait for Ticket 06
-to pass review.
+Ticket 06 Original Content editing with immutable revisions is complete. Its
+fresh fixed-range review passed both axes with no blocking finding: Standards
+passed with four non-blocking maintainability judgements, and Spec passed with
+no finding. The reviewed ranges were Diary
+`b47070d3ed3acb97909c9d59166ba8bed6415cfb...49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`
+and Personal Website
+`ab99cf8a101e2d0a294a6b1be740ed18b0207e47...e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+Personal Website was not changed by the blocking fixes and remains at
+`e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`. Ticket 07 revision restore has not
+started; its dependency is now complete, so Ticket 07 may begin in a separate
+implementation session.

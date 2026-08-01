@@ -439,3 +439,138 @@ review-documentation record.
     `b47070d3ed3acb97909c9d59166ba8bed6415cfb...49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`.
   - Personal Website:
     `ab99cf8a101e2d0a294a6b1be740ed18b0207e47...e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+
+### 2026-08-02 - New fixed-range code review passed
+
+- Review verdict: **PASSED**.
+  - Standards: **PASS** with no blocking or hard violation and four
+    non-blocking judgement findings.
+  - Spec: **PASS** with no finding.
+  - Both axes are free of blocking findings, so Ticket 06 is complete and
+    passes the required fresh-session code-review gate.
+- Fixed review ranges:
+  - Diary:
+    `b47070d3ed3acb97909c9d59166ba8bed6415cfb...49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`.
+  - Personal Website:
+    `ab99cf8a101e2d0a294a6b1be740ed18b0207e47...e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+
+#### Preflight
+
+- Diary and Personal Website were both clean on `main` before review.
+- Fresh `origin` refs confirmed every fixed-range endpoint is present on
+  `origin/main`. Diary `origin/main` and documentation HEAD were
+  `76829b08e5e51e484e21199674956beec925d1b6`; Personal Website `HEAD` and
+  `origin/main` were the fixed endpoint
+  `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+- Both exact three-dot diffs were non-empty, and both exact-range
+  `git diff --check` commands passed. The review did not substitute current
+  HEAD, a newly computed merge-base, or a working-tree diff for either fixed
+  range.
+- GitHub Actions were green at every required exact SHA:
+  - Diary implementation `Backend checks`, run
+    [30712354034](https://github.com/oscar940327/diary/actions/runs/30712354034),
+    completed successfully for
+    `49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`.
+  - Diary documentation `Backend checks`, run
+    [30712579494](https://github.com/oscar940327/diary/actions/runs/30712579494),
+    completed successfully for
+    `76829b08e5e51e484e21199674956beec925d1b6`.
+  - Personal Website `Website checks and Pages`, run
+    [30709120399](https://github.com/oscar940327/my-personal-website/actions/runs/30709120399),
+    and `pages build and deployment`, run
+    [30709120073](https://github.com/oscar940327/my-personal-website/actions/runs/30709120073),
+    completed successfully for
+    `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
+
+#### Standards findings
+
+- **Medium; non-blocking judgement call; possible Divergent Change.**
+  Personal Website `src/diary/EntryExperience.tsx:254-266,532-649,895-1034`
+  adds revision-editor state, conflict handling, revision fetching, and two
+  dialogs to the existing History, Calendar, and capture component. At 1,111
+  lines, the component weakens ADR 0005's preference for testable, focused
+  modules. This is maintainability cleanup and does not block Ticket 06.
+- **Low; non-blocking judgement call; Duplicated Code.** Personal Website
+  `src/diary/EntryExperience.tsx:604-614,651-661` repeats the
+  `Ctrl/Cmd+Enter` submit handler in the edit and capture forms. Existing E2E
+  coverage verifies both paths; extracting a shared handler is optional
+  cleanup.
+- **Low; non-blocking judgement call; Duplicated Code.** Diary
+  `src/diary_api/app.py:60-65,86-91` repeats the nonblank Original Content
+  validator for capture and replacement request models. Both HTTP 422
+  contracts are covered; a shared validator or value type is optional
+  cleanup.
+- **Low; non-blocking judgement call; Duplicated Code.** Personal Website
+  `tests/e2e/entry-revisions.spec.ts:5-55` repeats the unsigned-token,
+  localStorage session, and health/owner route scaffold used by other E2E
+  specs. A typed fixture could reduce future test setup drift.
+- No documented repository, workflow, ADR, migration, security, or testing
+  standard was violated. Tool-enforced formatting or type rules were not
+  reported as review findings.
+
+#### Spec findings
+
+- **No Spec findings.** Ticket 06 has no missing or partial requirement,
+  scope creep, or implementation behavior that appears incorrect in either
+  fixed range.
+
+#### Blocking-fix revalidation
+
+- The atomic edit boundary is repaired:
+  - Diary
+    `supabase/migrations/20260802120000_restrict_atomic_edit_mutations.sql:1-40,42-149,151-310`
+    creates a `NOLOGIN`, `NOSUPERUSER`, `NOINHERIT`, `NOBYPASSRLS` mutation
+    role, applies owner-scoped RLS to it, runs the edit function with
+    `row_security = on`, and revokes authenticated direct UPDATE of
+    `entries.current_revision_id`, `ai_processing.stale_at`, and both related
+    `updated_at` columns.
+  - `src/diary_api/entries.py:192-202,340-358` still sends the verified caller
+    bearer token with the publishable key. No service-role token or RLS bypass
+    replaces caller authorization.
+  - The same migration at `:185-292` locks the owner Entry, stales the old
+    obligation, creates the next immutable sequential revision, creates its
+    pending Draft and embedding obligation, and moves the current pointer in
+    one PostgreSQL transaction.
+  - `tests/system/test_entry_revisions.py:260-338,373-492` proves owner and
+    non-owner raw PATCH denial, non-owner RPC denial, caller-token RLS, and
+    complete transaction rollback when a restrictive RLS policy denies the
+    pointer update.
+- History snapshot membership is repaired:
+  - Diary
+    `supabase/migrations/20260802130000_stabilize_history_membership.sql:1-27`
+    adds and protects an immutable capture transaction identity. V4 at
+    `:33-295` applies `pg_visible_in_snapshot()` to that identity instead of
+    mutable `entries.xmin`.
+  - `tests/system/test_continuous_history.py:471-610` edits an unvisited Entry
+    after the initial page, exhausts older and newer cursors independently,
+    and proves the initial membership appears exactly once with no omission or
+    duplicate. It also proves full-microsecond Entry Time ordering before the
+    UUID tie-break and verifies that both the current traversal and a fresh
+    traversal display the edited current revision.
+  - The migration is ordered and additive, leaves History v1-v3 available,
+    and adds v4. `src/diary_api/entries.py:238-268` transitions the current
+    application to v4, while the immediately previous application remains
+    compatible with the retained v3 RPC and expanded `entries` schema.
+
+#### Review verification and scope
+
+- The two code-review axes ran in parallel and independently against only the
+  fixed ranges above.
+- Focused local verification passed five real-system regressions covering both
+  direct owner PATCH denials, non-owner API/RLS denial, caller-token RLS
+  rollback, and concurrent-edit History exact-once traversal. The first
+  sandboxed attempt stopped in Supabase CLI/Bun setup with the known Windows
+  user-file `EPERM`; the identical authorized rerun passed all five tests.
+- Original Ticket 06 behavior remains present: complete replacement plus
+  expected revision, immutable sequential history, newest-current detail and
+  History, newest-first owner revision history, deliberate HTTP 409 conflict
+  recovery, blank rejection, and durable stale/new processing obligations.
+- No AI generation, worker, Queue publication, RAG, revision restore, Entry
+  Time edit, Trash, or other Ticket 07 behavior was implemented. No secret was
+  added or exposed by either fixed range.
+- Personal Website was not modified by the blocking-fix session. Its endpoint
+  remains `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`, and the API contract is
+  unchanged.
+- Ticket 07 has not started. It may begin only in a separate implementation
+  session after this review-documentation commit is pushed and its exact-SHA
+  GitHub Actions run succeeds.
