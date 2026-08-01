@@ -336,27 +336,11 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 05 passed its fixed-range code review with Standards and Spec both
-passing with 0 blocking and 0 non-blocking findings. The reviewed ranges were
-Diary
-`891636e3c680a0bb7f032e64a0f779210302ff44...e252cb5bf5d33fc97438cb8d39b8800aacc98edc`
-and Personal Website
-`4bebbb5301260a4f1fa1a4ea594d2904e5243c13...ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
-Ticket 05 has therefore passed the code-review gate.
-
-The preserved TDD evidence records that the identical 20-repeat, 4-worker
-command against the unchanged base produced 12 passes and 8 failures, all at
-the initial April assertion, while the authoritative green rerun produced 20
-passes. The test-only fix pauses the clock before authentication, routing, page
-setup, and the initial April assertions; only explicit `runFor()` and
-`fastForward()` calls advance time. Its retained assertions cover April 2026,
-April 30 Today, the explicit transition to May 2026, May 1 Today, the
-`2026-05` Calendar request, preservation of owner-browsed April across the next
-midnight, and May 2 Today after returning to May. No production Calendar code
-changed. Diary CI exactly pins Personal Website SHA
-`ab99cf8a101e2d0a294a6b1be740ed18b0207e47`.
-
-The reviewed endpoints have not been pushed. The next step is to push Personal
-Website first, then push Diary, and confirm green CI at the exact reviewed
-SHAs. Only after that confirmation may Ticket 06 begin in a new session.
-Ticket 06 has not started.
+Ticket 05 calendar navigation is complete. Its final fixed-range review passed
+Standards and Spec with 0 blocking and 0 non-blocking findings. The reviewed
+endpoints and closing review record have been pushed: Diary commit
+`5e8ce14a87621e2524ec85d6cbd2bacc84590466` and Personal Website commit
+`ab99cf8a101e2d0a294a6b1be740ed18b0207e47`. Diary `Backend checks`, Personal
+Website `Website checks and Pages`, and Personal Website Pages deployment all
+completed successfully at those commits. Ticket 06 is the next
+dependency-ready Ticket and has not started.
