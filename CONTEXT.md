@@ -336,14 +336,13 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 06 Original Content editing with immutable revisions is complete. Its
-fresh fixed-range review passed both axes with no blocking finding: Standards
-passed with four non-blocking maintainability judgements, and Spec passed with
-no finding. The reviewed ranges were Diary
-`b47070d3ed3acb97909c9d59166ba8bed6415cfb...49667cb0569a93a0bd2d7fa2c5a4f0a59a327d3e`
+Ticket 07 historical Entry Revision restoration is complete. Its fresh
+fixed-range review passed both axes with no blocking finding: Standards passed
+with four non-blocking maintainability judgements, and Spec passed with no
+finding. The reviewed ranges were Diary
+`eda071b58a04bf0fa7358b80e0a65e94f4068874...c42d0f5f54586c62494c77b99838bb11b372119d`
 and Personal Website
-`ab99cf8a101e2d0a294a6b1be740ed18b0207e47...e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`.
-Personal Website was not changed by the blocking fixes and remains at
-`e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd`. Ticket 07 revision restore has not
-started; its dependency is now complete, so Ticket 07 may begin in a separate
-implementation session.
+`e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd...231ebe21ed09ec7d777f3c78ed6eb58aab396962`.
+Ticket 08 Entry Time mutation has not started. It may begin only in a separate
+implementation session after this review-documentation commit is pushed and
+its exact-SHA GitHub Actions run succeeds.

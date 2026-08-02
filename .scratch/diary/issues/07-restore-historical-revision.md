@@ -83,3 +83,92 @@
   `66 passed` with one existing Starlette/httpx deprecation warning.
 - Personal Website: `npm test` passed typecheck and all `21` Chromium tests;
   `npm run build` and `npm run verify:build` passed.
+
+### 2026-08-03 - Fixed-range code review passed
+
+#### Verdict and fixed ranges
+
+- Review verdict: **PASSED**.
+  - Standards: **PASS** with no blocking or documented-standard violation and
+    four non-blocking maintainability judgements.
+  - Spec: **PASS** with no finding.
+- Diary fixed range:
+  `eda071b58a04bf0fa7358b80e0a65e94f4068874...c42d0f5f54586c62494c77b99838bb11b372119d`.
+- Personal Website fixed range:
+  `e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd...231ebe21ed09ec7d777f3c78ed6eb58aab396962`.
+- Both review axes ran independently and in parallel against only these fixed
+  three-dot ranges. Neither axis substituted current HEAD, a newly computed
+  merge-base, or a working-tree diff.
+
+#### Preflight and GitHub Actions
+
+- Both worktrees were clean before and after review, and both HEADs exactly
+  matched their implementation endpoints.
+- Fresh `origin` refs confirmed all four endpoints exist and both
+  implementation commits are present on `origin/main`.
+- Both fixed ranges were non-empty, with one implementation commit in each.
+- Both exact-range `git diff --check` commands passed.
+- Exact-SHA GitHub Actions were green:
+  - Diary `Backend checks`, run
+    [30762305447](https://github.com/oscar940327/diary/actions/runs/30762305447),
+    completed successfully for
+    `c42d0f5f54586c62494c77b99838bb11b372119d`.
+  - Personal Website `Website checks and Pages`, run
+    [30762095151](https://github.com/oscar940327/my-personal-website/actions/runs/30762095151),
+    and `pages build and deployment`, run
+    [30762094606](https://github.com/oscar940327/my-personal-website/actions/runs/30762094606),
+    completed successfully for
+    `231ebe21ed09ec7d777f3c78ed6eb58aab396962`.
+
+#### Standards findings
+
+- **Medium; non-blocking judgement call; possible Divergent Change.** Personal
+  Website `src/diary/EntryExperience.tsx:625-716,1085-1164` keeps Restore
+  orchestration, conflict handling, confirmation and presentation in the
+  existing large component. Extracting a focused revision-restore module is
+  optional maintainability work and does not block Ticket 07.
+- **Low; non-blocking judgement call; possible Duplicated Code.** Personal
+  Website `src/diary/api.ts:115-149,286-319,344-377` repeats the Edit and
+  Restore conflict envelopes, error carriers and HTTP `409` decoding. A shared
+  conflict decoder or type is optional cleanup.
+- **Low; non-blocking judgement call; possible Duplicated Code.** Diary
+  `src/diary_api/app.py:505-542,545-582` and
+  `src/diary_api/entries.py:184-215,217-248` repeat mutation-result parsing,
+  exception mapping and stale-conflict response shapes between Edit and
+  Restore. A narrow shared helper is optional cleanup.
+- **Low; non-blocking judgement call; possible Duplicated Code.** Personal
+  Website `tests/e2e/entry-revisions.spec.ts:153-193,297-337` repeats browser
+  authentication and health/owner route scaffolding. A typed fixture could
+  reduce future drift.
+- No hard Standards violation or blocking finding was found. Tool-enforced
+  formatting or type rules were not reported as review findings.
+
+#### Spec findings and verification
+
+- **No Spec findings.** Ticket 07 has no missing or partial requirement,
+  incorrect implementation behaviour, or scope creep in either fixed range.
+- Review confirmed the distinct historical-only Restore action and explicit
+  confirmation, the two-identity request, sequential immutable copy, unchanged
+  historical revisions, current Entry and History display, stale superseded
+  processing, one new active obligation, atomic rollback, and HTTP `409` stale
+  conflict without retry or overwrite.
+- FastAPI continues to use the caller owner token. PostgreSQL forced RLS and
+  the no-login, no-bypass mutation role remain an independent authorization
+  boundary, while direct owner-token PATCH of the current pointer and
+  processing staleness remains denied.
+- The ordered migration only adds the Restore RPC and preserves compatibility
+  with the immediately previous application revision.
+- Focused local verification passed seven Restore, direct-mutation, RLS and
+  atomicity system tests; the complete Entry Revision plus continuous-History
+  set passed `18 passed`; the real owner/mobile browser set passed
+  `14 passed`; the focused snapshot regression passed; the Website Entry
+  Revision Playwright spec passed `3 passed`; and an ordered Supabase database
+  reset applied every migration successfully.
+- Credential, private-key and new-log-call scans of the exact diffs found no
+  secret, personal content, token or logging exposure.
+- No Entry Time mutation, Trash, AI Draft generation, Queue publication, RAG,
+  Agent, or other Ticket 08-or-later work was started.
+
+Ticket 07 passes the required review gate and is complete. Its non-blocking
+maintainability judgements are not part of Ticket 08 and should be tracked
+separately if the owner chooses to address them.
