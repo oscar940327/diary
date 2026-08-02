@@ -105,7 +105,56 @@ def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
         )
     ).to_be_visible()
     expect(revision_history.locator("time")).to_have_count(2)
+
     revision_history.get_by_role(
+        "button",
+        name="Restore Revision 1",
+    ).click()
+    restore_confirmation = revision_history.get_by_role(
+        "alertdialog",
+        name="Restore Revision 1?",
+    )
+    expect(restore_confirmation).to_contain_text(
+        "copies Revision 1 into a new Revision 3"
+    )
+    expect(restore_confirmation).to_contain_text(
+        "Revision 1 and Revision 2 remain unchanged"
+    )
+    restore_confirmation.get_by_role(
+        "button",
+        name="Confirm restore",
+    ).click()
+
+    restored_entry = page.locator("article.diary-entry").filter(
+        has_text=(
+            "Mobile system capture keeps the complete Original Content."
+        )
+    )
+    expect(restored_entry).to_be_visible()
+    expect(
+        restored_entry.get_by_text(
+            "Mobile edit saves a complete replacement as Revision 2.",
+            exact=True,
+        )
+    ).not_to_be_visible()
+
+    restored_entry.get_by_text("Entry actions", exact=True).click()
+    restored_entry.get_by_role(
+        "button",
+        name="View revision history",
+    ).click()
+    restored_history = page.get_by_role("dialog", name="Revision History")
+    expect(
+        restored_history.get_by_text("Revision 3 · Current")
+    ).to_be_visible()
+    expect(
+        restored_history.get_by_text("Revision 2", exact=True)
+    ).to_be_visible()
+    expect(
+        restored_history.get_by_text("Revision 1", exact=True)
+    ).to_be_visible()
+    expect(restored_history.locator("time")).to_have_count(3)
+    restored_history.get_by_role(
         "button",
         name="Close revision history",
     ).click()
@@ -119,7 +168,7 @@ def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
     ).to_be_visible()
     expect(
         page.get_by_text(
-            "Mobile edit saves a complete replacement as Revision 2.",
+            "Mobile system capture keeps the complete Original Content.",
             exact=True,
         )
     ).to_be_visible()

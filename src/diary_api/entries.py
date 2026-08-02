@@ -214,6 +214,39 @@ class SupabaseEntryStore:
         except ValueError as error:
             raise EntryStoreUnavailable from error
 
+    async def restore_revision(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+        selected_revision_id: UUID,
+        expected_current_revision_id: UUID,
+    ) -> tuple[EntryRecord, bool]:
+        rows = await self._rpc(
+            "restore_diary_entry_revision",
+            {
+                "p_entry_id": str(entry_id),
+                "p_selected_revision_id": str(selected_revision_id),
+                "p_expected_current_revision_id": str(
+                    expected_current_revision_id
+                ),
+            },
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        if len(rows) != 1:
+            raise EntryStoreUnavailable
+
+        row = dict(rows[0])
+        restore_applied = row.pop("restore_applied", None)
+        if not isinstance(restore_applied, bool):
+            raise EntryStoreUnavailable
+        try:
+            return EntryRecord.model_validate(row), restore_applied
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
     async def list_calendar_month(
         self,
         *,

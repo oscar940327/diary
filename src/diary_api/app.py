@@ -91,6 +91,13 @@ class ReplaceOriginalContentRequest(BaseModel):
         return value
 
 
+class RestoreEntryRevisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    selected_revision_id: UUID
+    expected_current_revision_id: UUID
+
+
 class EntryRevisionHistory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -527,6 +534,47 @@ async def replace_entry_original_content(
                     "code": "stale_entry_revision",
                     "message": (
                         "Original Content changed after this editor opened."
+                    ),
+                    "current_entry": entry.model_dump(mode="json"),
+                }
+            },
+        )
+    return entry
+
+
+@app.post(
+    "/entries/{entry_id}/revision-restorations",
+    response_model=EntryRecord,
+)
+async def restore_entry_revision(
+    entry_id: UUID,
+    request: RestoreEntryRevisionRequest,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> EntryRecord | JSONResponse:
+    try:
+        entry, restore_applied = await store.restore_revision(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+            selected_revision_id=request.selected_revision_id,
+            expected_current_revision_id=(
+                request.expected_current_revision_id
+            ),
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+
+    if not restore_applied:
+        return JSONResponse(
+            status_code=status.HTTP_409_CONFLICT,
+            content={
+                "detail": {
+                    "code": "stale_entry_revision",
+                    "message": (
+                        "Original Content changed after this restore "
+                        "was prepared."
                     ),
                     "current_entry": entry.model_dump(mode="json"),
                 }

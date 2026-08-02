@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass, field
 from html import unescape
 from pathlib import Path
@@ -424,6 +424,29 @@ def entry_update_rls_denial(
         _execute_local_database_sql(
             f'drop policy "{policy_name}" on public.entries;'
         )
+
+
+@pytest.fixture
+def deny_entry_updates(
+    provisioned_users: LocalSupabase,
+) -> Callable[[], AbstractContextManager[None]]:
+    @contextmanager
+    def denial() -> Iterator[None]:
+        policy_name = "system test temporarily denies entry updates"
+        _execute_local_database_sql(
+            f'create policy "{policy_name}" '
+            "on public.entries as restrictive "
+            "for update to diary_edit_mutator using (true) "
+            "with check (false);"
+        )
+        try:
+            yield
+        finally:
+            _execute_local_database_sql(
+                f'drop policy "{policy_name}" on public.entries;'
+            )
+
+    return denial
 
 
 def _wait_until_ready(

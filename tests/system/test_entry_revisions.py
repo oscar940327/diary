@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import httpx
-from typing import Protocol, cast
+from contextlib import AbstractContextManager
+from typing import Callable, Protocol, cast
 
 
 class SupabaseSettings(Protocol):
@@ -61,6 +62,228 @@ def _replace_original_content(
             "original_content": content,
         },
     )
+
+
+def _restore_revision(
+    diary_api: str,
+    access_token: str,
+    *,
+    entry_id: object,
+    selected_revision_id: object,
+    expected_revision_id: object,
+) -> httpx.Response:
+    return httpx.post(
+        f"{diary_api}/entries/{entry_id}/revision-restorations",
+        headers=_owner_headers(access_token),
+        json={
+            "selected_revision_id": selected_revision_id,
+            "expected_current_revision_id": expected_revision_id,
+        },
+    )
+
+
+def test_restore_copies_historical_content_into_new_current_revision(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="Ticket 07 historical Original Content.",
+        idempotency_key="restore-historical-revision",
+    )
+    edit_response = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        expected_revision_id=original["current_revision_id"],
+        content="Ticket 07 intervening Revision 2.",
+    )
+    assert edit_response.status_code == 200, edit_response.text
+    edited = edit_response.json()
+
+    before_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}/revisions",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert before_response.status_code == 200, before_response.text
+    revisions_before_restore = before_response.json()["revisions"]
+
+    restore_response = _restore_revision(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        selected_revision_id=original["current_revision_id"],
+        expected_revision_id=edited["current_revision_id"],
+    )
+
+    assert restore_response.status_code == 200, restore_response.text
+    restored = restore_response.json()
+    assert restored["id"] == original["id"]
+    assert restored["current_revision_id"] not in {
+        original["current_revision_id"],
+        edited["current_revision_id"],
+    }
+    assert restored["revision_number"] == 3
+    assert restored["original_content"] == original["original_content"]
+    assert restored["processing_state"] == "pending"
+
+    after_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}/revisions",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert after_response.status_code == 200, after_response.text
+    history = after_response.json()
+    assert history["current_revision_id"] == restored["current_revision_id"]
+    assert [
+        revision["revision_number"] for revision in history["revisions"]
+    ] == [3, 2, 1]
+    immutable_fields = (
+        "id",
+        "entry_id",
+        "revision_number",
+        "original_content",
+        "created_at",
+    )
+    assert [
+        {field: revision[field] for field in immutable_fields}
+        for revision in history["revisions"][1:]
+    ] == [
+        {field: revision[field] for field in immutable_fields}
+        for revision in revisions_before_restore
+    ]
+    assert [
+        revision["is_current"] for revision in history["revisions"]
+    ] == [True, False, False]
+    assert history["revisions"][0]["original_content"] == (
+        original["original_content"]
+    )
+    assert history["revisions"][0]["is_current"] is True
+
+    processing_response = httpx.get(
+        (
+            f"{local_supabase.api_url}/rest/v1/ai_processing"
+            "?select=entry_revision_id,stale_at"
+            f"&entry_revision_id=in.({original['current_revision_id']},"
+            f"{edited['current_revision_id']},"
+            f"{restored['current_revision_id']})"
+            "&order=created_at.asc"
+        ),
+        headers=_postgrest_headers(local_supabase, owner_access_token),
+    )
+    assert processing_response.status_code == 200, processing_response.text
+    obligations = processing_response.json()
+    assert [
+        obligation["entry_revision_id"]
+        for obligation in obligations
+        if obligation["stale_at"] is None
+    ] == [restored["current_revision_id"]]
+
+    detail_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json() == restored
+
+    continuous_history_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={"anchor_date": restored["owner_date"]},
+    )
+    assert continuous_history_response.status_code == 200
+    assert [
+        entry
+        for group in continuous_history_response.json()["groups"]
+        for entry in group["entries"]
+        if entry["id"] == original["id"]
+    ] == [restored]
+
+
+def test_stale_restore_conflicts_without_overwriting_newer_edit(
+    diary_api: str,
+    owner_access_token: str,
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="Historical content selected for restoration.",
+        idempotency_key="stale-revision-restore",
+    )
+    second_response = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        expected_revision_id=original["current_revision_id"],
+        content="Revision 2 was current when restore was prepared.",
+    )
+    assert second_response.status_code == 200, second_response.text
+    second = second_response.json()
+    winning_response = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        expected_revision_id=second["current_revision_id"],
+        content="Revision 3 is the newer edit that must win.",
+    )
+    assert winning_response.status_code == 200, winning_response.text
+    winning = winning_response.json()
+
+    stale_response = _restore_revision(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        selected_revision_id=original["current_revision_id"],
+        expected_revision_id=second["current_revision_id"],
+    )
+
+    assert stale_response.status_code == 409
+    assert stale_response.json() == {
+        "detail": {
+            "code": "stale_entry_revision",
+            "message": (
+                "Original Content changed after this restore was prepared."
+            ),
+            "current_entry": winning,
+        }
+    }
+    detail_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert detail_response.json() == winning
+    history_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}/revisions",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert [
+        revision["revision_number"]
+        for revision in history_response.json()["revisions"]
+    ] == [3, 2, 1]
+
+
+def test_restore_requires_selected_and_expected_revision_identity(
+    diary_api: str,
+    owner_access_token: str,
+) -> None:
+    entry_id = "2d781a10-9e47-49a1-85c6-77b6242df437"
+    revision_id = "d5b09e40-cb56-4680-82e4-140295bfa28a"
+    endpoint = f"{diary_api}/entries/{entry_id}/revision-restorations"
+
+    missing_selected = httpx.post(
+        endpoint,
+        headers=_owner_headers(owner_access_token),
+        json={"expected_current_revision_id": revision_id},
+    )
+    missing_expected = httpx.post(
+        endpoint,
+        headers=_owner_headers(owner_access_token),
+        json={"selected_revision_id": revision_id},
+    )
+
+    assert missing_selected.status_code == 422
+    assert missing_expected.status_code == 422
 
 
 def test_sequential_edits_create_immutable_revision_history(
@@ -490,3 +713,104 @@ def test_fastapi_edit_uses_owner_token_for_postgres_rls(
         headers=_owner_headers(owner_access_token),
     )
     assert len(history_response.json()["revisions"]) == 1
+
+
+def test_restore_is_owner_only_at_fastapi_and_postgres_rls_boundaries(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+    non_owner_access_token: str,
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="Owner-only historical revision.",
+        idempotency_key="owner-only-revision-restore",
+    )
+    edit_response = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        expected_revision_id=original["current_revision_id"],
+        content="Owner-only current revision.",
+    )
+    assert edit_response.status_code == 200, edit_response.text
+    edited = edit_response.json()
+
+    denied_api_response = _restore_revision(
+        diary_api,
+        non_owner_access_token,
+        entry_id=original["id"],
+        selected_revision_id=original["current_revision_id"],
+        expected_revision_id=edited["current_revision_id"],
+    )
+    assert denied_api_response.status_code == 401
+    assert denied_api_response.json() == {
+        "detail": "Authentication required"
+    }
+
+    denied_rpc_response = httpx.post(
+        (
+            f"{local_supabase.api_url}/rest/v1/rpc/"
+            "restore_diary_entry_revision"
+        ),
+        headers=_postgrest_headers(
+            local_supabase,
+            non_owner_access_token,
+        ),
+        json={
+            "p_entry_id": original["id"],
+            "p_selected_revision_id": original["current_revision_id"],
+            "p_expected_current_revision_id": (
+                edited["current_revision_id"]
+            ),
+        },
+    )
+    assert denied_rpc_response.status_code == 200
+    assert denied_rpc_response.json() == []
+
+
+def test_fastapi_restore_uses_owner_token_for_atomic_postgres_rls(
+    diary_api: str,
+    owner_access_token: str,
+    deny_entry_updates: Callable[[], AbstractContextManager[None]],
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="Historical revision preserved by transaction rollback.",
+        idempotency_key="restore-rls-defense",
+    )
+    edit_response = _replace_original_content(
+        diary_api,
+        owner_access_token,
+        entry_id=original["id"],
+        expected_revision_id=original["current_revision_id"],
+        content="Current revision preserved by transaction rollback.",
+    )
+    assert edit_response.status_code == 200, edit_response.text
+    edited = edit_response.json()
+
+    with deny_entry_updates():
+        denied_response = _restore_revision(
+            diary_api,
+            owner_access_token,
+            entry_id=original["id"],
+            selected_revision_id=original["current_revision_id"],
+            expected_revision_id=edited["current_revision_id"],
+        )
+
+    assert denied_response.status_code == 503
+    detail_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert detail_response.json() == edited
+    history_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}/revisions",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert [
+        revision["revision_number"]
+        for revision in history_response.json()["revisions"]
+    ] == [2, 1]
