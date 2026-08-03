@@ -1,4 +1,6 @@
 from collections.abc import Callable
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from playwright.sync_api import Page, expect
 
@@ -155,6 +157,65 @@ def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
     ).to_be_visible()
     expect(restored_history.locator("time")).to_have_count(3)
     restored_history.get_by_role(
+        "button",
+        name="Close revision history",
+    ).click()
+
+    moved_owner_date = (
+        datetime.now(ZoneInfo("Asia/Taipei")) - timedelta(days=30)
+    ).date().isoformat()
+    captured_value = (
+        restored_entry.locator("dl > div")
+        .filter(has_text="Captured")
+        .locator("dd")
+        .inner_text()
+    )
+    restored_entry.get_by_text("Entry actions", exact=True).click()
+    restored_entry.get_by_role(
+        "button",
+        name="Change Entry Time",
+    ).click()
+    time_editor = page.get_by_role("dialog", name="Change Entry Time")
+    expect(time_editor).to_contain_text(
+        "changes Entry metadata only"
+    )
+    expect(time_editor).to_contain_text(
+        "Captured time and Original Content revisions remain unchanged"
+    )
+    time_editor.get_by_label("New Entry Time").fill(
+        f"{moved_owner_date}T00:15"
+    )
+    time_editor.get_by_role("button", name="Save Entry Time").click()
+
+    expect(
+        page.get_by_role("heading", name=moved_owner_date, exact=True)
+    ).to_be_visible()
+    moved_entry = page.locator("article.diary-entry").filter(
+        has_text=(
+            "Mobile system capture keeps the complete Original Content."
+        )
+    )
+    expect(moved_entry).to_be_visible()
+    expect(
+        moved_entry.locator("dl > div")
+        .filter(has_text="Captured")
+        .locator("dd")
+    ).to_have_text(captured_value)
+    expect(
+        moved_entry.get_by_text("AI processing pending")
+    ).to_be_visible()
+
+    moved_entry.get_by_text("Entry actions", exact=True).click()
+    moved_entry.get_by_role(
+        "button",
+        name="View revision history",
+    ).click()
+    unchanged_history = page.get_by_role(
+        "dialog",
+        name="Revision History",
+    )
+    expect(unchanged_history.locator("time")).to_have_count(3)
+    unchanged_history.get_by_role(
         "button",
         name="Close revision history",
     ).click()

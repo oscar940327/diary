@@ -181,6 +181,30 @@ class SupabaseEntryStore:
         except ValueError as error:
             raise EntryStoreUnavailable from error
 
+    async def change_entry_time(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+        entry_at: datetime,
+    ) -> EntryRecord:
+        rows = await self._rpc(
+            "change_diary_entry_time",
+            {
+                "p_entry_id": str(entry_id),
+                "p_entry_at": entry_at.isoformat(),
+            },
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        if len(rows) != 1:
+            raise EntryStoreUnavailable
+        try:
+            return EntryRecord.model_validate(rows[0])
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
     async def replace_original_content(
         self,
         *,
@@ -280,7 +304,7 @@ class SupabaseEntryStore:
         limit: int,
     ) -> HistorySlice:
         rows = await self._rpc(
-            "list_diary_history_v4",
+            "list_diary_history_v5",
             {
                 "p_anchor_date": anchor_date.isoformat(),
                 "p_direction": direction,

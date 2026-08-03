@@ -98,6 +98,19 @@ class RestoreEntryRevisionRequest(BaseModel):
     expected_current_revision_id: UUID
 
 
+class ChangeEntryTimeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entry_at: datetime
+
+    @field_validator("entry_at")
+    @classmethod
+    def entry_time_must_include_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("Entry Time must include a UTC offset")
+        return value.astimezone(UTC)
+
+
 class EntryRevisionHistory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -500,6 +513,28 @@ async def list_entry_revisions(
         current_revision_id=current_revision.id,
         revisions=revisions,
     )
+
+
+@app.put(
+    "/entries/{entry_id}/entry-time",
+    response_model=EntryRecord,
+)
+async def change_entry_time(
+    entry_id: UUID,
+    request: ChangeEntryTimeRequest,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> EntryRecord:
+    try:
+        return await store.change_entry_time(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+            entry_at=request.entry_at,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
 
 
 @app.put(

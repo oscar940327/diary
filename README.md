@@ -77,9 +77,19 @@ contains complete current Original Content grouped by owner date and separate
 opaque `older_cursor` and `newer_cursor` values. Follow either cursor with its
 matching `direction`; bounded keyset pages use Entry Time plus Entry identity
 for stable ordering and retain one snapshot while paging so intervening
-captures are not duplicated or skipped. Start a new request without a cursor
+captures or Entry Time changes are not duplicated or skipped. Entry Time
+positions are versioned only for snapshot-stable History ordering; they are
+Entry metadata and never Entry Revisions. Start a new request without a cursor
 to refresh that snapshot. `GET /entries/today` remains available for the
 Ticket 03 compatibility contract.
+
+The explicit `PUT /entries/{entry_id}/entry-time` action accepts one
+offset-aware `entry_at`. It updates Entry metadata and the affected
+`Asia/Taipei` History and Calendar grouping without creating, changing, or
+staling an Entry Revision or its processing obligation. The immutable
+`created_at` capture time remains separate. Offsetless or invalid timestamps
+are rejected before mutation, and direct owner-token table updates remain
+denied; FastAPI owner authorization and PostgreSQL RLS both protect the action.
 
 In the sibling frontend repository, copy `.env.example` to `.env.local`, use
 the local `API_URL` and `PUBLISHABLE_KEY` printed by Supabase, then run:
