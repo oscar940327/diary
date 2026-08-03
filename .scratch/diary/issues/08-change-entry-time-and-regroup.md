@@ -185,3 +185,67 @@
 No Ticket 09 scope creep, committed secret, or additional blocking finding was
 found. Ticket 08 remains `ready-for-agent` for the two Spec fixes, and Ticket
 09 must not begin until a fresh fixed-range review passes.
+
+### 2026-08-04 - Blocking review findings fixed; fresh review required
+
+#### TDD evidence
+
+- FastAPI red: the new real Uvicorn HTTP test sent
+  `9999-12-31T23:59:59.999999-14:00` and received `500 Internal Server Error`
+  instead of the required validation response.
+- PostgREST red: the new direct owner-token RPC test received `200` and wrote
+  `10000-01-01T13:59:59.999999+00:00`, proving PostgreSQL could create Entry
+  metadata that Python could not safely read.
+- Chromium red: with 120 lifetime Entries and 40 Entries loaded across two
+  History pages, changing Entry Time from an Entry on the second page reduced
+  the rendered window to the single 20-Entry initial page.
+- Timestamp green: the real FastAPI and direct PostgREST boundary tests passed
+  `2 passed`, including upper and lower UTC-normalization overflow, year
+  `10000`, offsetless and invalid-offset timestamps, and missing `entry_at`.
+- History green: the real mobile Chromium regression passed while preserving
+  the 40-Entry loaded window and the reading Entry within an 8-pixel viewport
+  tolerance. Subsequent newer and older requests used one new snapshot,
+  produced no duplicate or omitted covered Entry, updated both Calendar
+  counts, and rendered only 80 of 120 lifetime Entries.
+
+#### Fixes and preserved invariants
+
+- Create Entry and Change Entry Time now share one Pydantic
+  UTC-normalization-safe Entry Time validator. Normalization overflow becomes
+  a formal `422` validation failure rather than an uncaught exception.
+- Ordered expand migration
+  `20260804130000_restrict_entry_time_to_python_utc_range.sql` replaces only
+  the controlled Entry Time RPC implementation, retains its restricted owner
+  role and RLS path, and enforces the same Python-safe UTC range. Invalid or
+  missing direct RPC input returns `400` before any Entry update.
+- The frontend rebuilds the previously loaded History window around the
+  preserved reading Entry or moved Entry using bounded 20-Entry requests from
+  a new snapshot. It never combines old snapshot cursors with new data and
+  restores the scroll anchor only after the final rebuilt window is ready.
+- Failed validation leaves every Entry field, immutable Entry Revision row and
+  identifier, Original Content, Revision `created_at`, AI processing
+  obligation, and Entry history-position row unchanged. A successful time-only
+  mutation still changes no Revision or AI processing obligation.
+- Diary CI now calls the checkout step `Check out reviewed Diary frontend` and
+  pins Personal Website commit
+  `7898db9691d41f3f418a27250387164531359aac` exactly.
+- No Ticket 09, Trash, deletion, AI generation, Queue, RAG, Agent, broad
+  `EntryExperience` refactor, secret-bearing frontend data, or Git credential
+  work was started.
+
+#### Verification and review handoff
+
+- Ordered local Supabase reset applied every migration through
+  `20260804130000` successfully.
+- Diary static and focused checks passed: `python -m mypy src tests`, the
+  Ticket 04-08 History/Calendar/Revision/Entry Time set (`35 passed`), both
+  real mobile Chromium journeys (`2 passed`), and the complete
+  `python -m pytest -q` suite (`78 passed`) with the existing single
+  Starlette/httpx deprecation warning.
+- Personal Website checks passed: `npm.cmd run typecheck`, all `21` Playwright
+  Chromium tests, `npm.cmd run build`, and `npm.cmd run verify:build`.
+- Personal Website fix commit:
+  `7898db9691d41f3f418a27250387164531359aac`.
+- This fix session did not run code review and did not push either repository.
+  The prior review remains failed until a new session reviews the original
+  Ticket 08 bases against the new repository Heads. Ticket 09 remains blocked.

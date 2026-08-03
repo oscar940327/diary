@@ -17,7 +17,7 @@ from fastapi import (
 )
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, field_validator
 
 from diary_api.auth import (
     AuthenticatedIdentity,
@@ -51,11 +51,28 @@ class OwnerResponse(TypedDict):
     owner_id: str
 
 
+def normalize_entry_time(value: datetime) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("Entry Time must include a UTC offset")
+    try:
+        return value.astimezone(UTC)
+    except (OverflowError, ValueError) as error:
+        raise ValueError(
+            "Entry Time is outside the supported UTC range"
+        ) from error
+
+
+NormalizedEntryTime = Annotated[
+    datetime,
+    AfterValidator(normalize_entry_time),
+]
+
+
 class CreateEntryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     original_content: str
-    entry_at: datetime | None = None
+    entry_at: NormalizedEntryTime | None = None
 
     @field_validator("original_content")
     @classmethod
@@ -63,19 +80,6 @@ class CreateEntryRequest(BaseModel):
         if not value.strip():
             raise ValueError("Original Content cannot be blank")
         return value
-
-    @field_validator("entry_at")
-    @classmethod
-    def entry_time_must_include_timezone(
-        cls,
-        value: datetime | None,
-    ) -> datetime | None:
-        if value is None:
-            return None
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("Entry Time must include a UTC offset")
-        return value.astimezone(UTC)
-
 
 class ReplaceOriginalContentRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -101,14 +105,7 @@ class RestoreEntryRevisionRequest(BaseModel):
 class ChangeEntryTimeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    entry_at: datetime
-
-    @field_validator("entry_at")
-    @classmethod
-    def entry_time_must_include_timezone(cls, value: datetime) -> datetime:
-        if value.tzinfo is None or value.utcoffset() is None:
-            raise ValueError("Entry Time must include a UTC offset")
-        return value.astimezone(UTC)
+    entry_at: NormalizedEntryTime
 
 
 class EntryRevisionHistory(BaseModel):

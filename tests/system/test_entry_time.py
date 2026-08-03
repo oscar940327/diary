@@ -83,6 +83,24 @@ def _processing_obligations(
     return cast(list[dict[str, object]], response.json())
 
 
+def _history_positions(
+    settings: SupabaseSettings,
+    access_token: str,
+    entry_id: object,
+) -> list[dict[str, object]]:
+    response = httpx.get(
+        (
+            f"{settings.api_url}/rest/v1/entry_history_positions"
+            "?select=entry_id,entry_at,valid_from_xid,valid_until_xid"
+            f"&entry_id=eq.{entry_id}"
+            "&order=valid_from_xid.asc"
+        ),
+        headers=_postgrest_headers(settings, access_token),
+    )
+    assert response.status_code == 200, response.text
+    return cast(list[dict[str, object]], response.json())
+
+
 def _calendar_counts(
     diary_api: str,
     access_token: str,
@@ -518,6 +536,159 @@ def test_invalid_or_offsetless_entry_time_is_rejected_without_partial_change(
         owner_access_token,
         original["current_revision_id"],
     ) == processing_before
+
+
+def test_fastapi_rejects_utc_normalization_overflow_without_partial_change(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="FastAPI boundary validation must be atomic.",
+        entry_at="2082-08-10T12:00:00+08:00",
+        idempotency_key="entry-time-fastapi-range-validation",
+    )
+    revisions_before = _revision_history(
+        diary_api,
+        owner_access_token,
+        original["id"],
+    )
+    processing_before = _processing_obligations(
+        local_supabase,
+        owner_access_token,
+        original["current_revision_id"],
+    )
+    positions_before = _history_positions(
+        local_supabase,
+        owner_access_token,
+        original["id"],
+    )
+
+    for body in (
+        {"entry_at": "9999-12-31T23:59:59.999999-14:00"},
+        {"entry_at": "0001-01-01T00:00:00+14:00"},
+        {"entry_at": "10000-01-01T00:00:00+00:00"},
+        {"entry_at": "2082-08-11T12:00:00"},
+        {"entry_at": "2082-08-11T12:00:00+25:00"},
+        {},
+    ):
+        response = httpx.put(
+            f"{diary_api}/entries/{original['id']}/entry-time",
+            headers=_owner_headers(owner_access_token),
+            json=body,
+        )
+        assert response.status_code == 422, response.text
+
+    detail_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json() == original
+    assert _revision_history(
+        diary_api,
+        owner_access_token,
+        original["id"],
+    ) == revisions_before
+    assert _processing_obligations(
+        local_supabase,
+        owner_access_token,
+        original["current_revision_id"],
+    ) == processing_before
+    assert _history_positions(
+        local_supabase,
+        owner_access_token,
+        original["id"],
+    ) == positions_before
+
+
+def test_direct_rpc_rejects_python_unsafe_timestamps_without_partial_change(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    original = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="The direct RPC cannot create unreadable metadata.",
+        entry_at="2082-08-20T12:00:00+08:00",
+        idempotency_key="entry-time-rpc-range-validation",
+    )
+    revisions_before = _revision_history(
+        diary_api,
+        owner_access_token,
+        original["id"],
+    )
+    processing_before = _processing_obligations(
+        local_supabase,
+        owner_access_token,
+        original["current_revision_id"],
+    )
+    positions_before = _history_positions(
+        local_supabase,
+        owner_access_token,
+        original["id"],
+    )
+    endpoint = (
+        f"{local_supabase.api_url}/rest/v1/rpc/change_diary_entry_time"
+    )
+
+    for body in (
+        {
+            "p_entry_id": original["id"],
+            "p_entry_at": "9999-12-31T23:59:59.999999-14:00",
+        },
+        {
+            "p_entry_id": original["id"],
+            "p_entry_at": "0001-01-01T00:00:00+14:00",
+        },
+        {
+            "p_entry_id": original["id"],
+            "p_entry_at": "10000-01-01T00:00:00+00:00",
+        },
+        {
+            "p_entry_id": original["id"],
+            "p_entry_at": "2082-08-21T12:00:00",
+        },
+        {
+            "p_entry_id": original["id"],
+            "p_entry_at": "2082-08-21T12:00:00+25:00",
+        },
+        {"p_entry_id": original["id"]},
+    ):
+        response = httpx.post(
+            endpoint,
+            headers=_postgrest_headers(
+                local_supabase,
+                owner_access_token,
+            ),
+            json=body,
+        )
+        assert response.status_code == 400, response.text
+
+    detail_response = httpx.get(
+        f"{diary_api}/entries/{original['id']}",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert detail_response.status_code == 200, detail_response.text
+    assert detail_response.json() == original
+    assert _revision_history(
+        diary_api,
+        owner_access_token,
+        original["id"],
+    ) == revisions_before
+    assert _processing_obligations(
+        local_supabase,
+        owner_access_token,
+        original["current_revision_id"],
+    ) == processing_before
+    assert _history_positions(
+        local_supabase,
+        owner_access_token,
+        original["id"],
+    ) == positions_before
 
 
 def test_owner_cannot_patch_entry_metadata_outside_controlled_action(
