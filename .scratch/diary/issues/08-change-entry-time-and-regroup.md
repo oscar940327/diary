@@ -104,3 +104,84 @@
   `21` tests as `ok` but did not return after Playwright's reusable local Vite
   server teardown. Running the same complete spec set directly through
   `npm.cmd run test:e2e -- <all four spec files>` returned exit code zero.
+
+### 2026-08-04 - Fixed-range code review requires changes
+
+#### Verdict and fixed ranges
+
+- Review verdict: **CHANGES-REQUIRED**.
+  - Standards: **PASS** with no blocking or documented-standard violation and
+    three low-severity, non-blocking maintainability judgements.
+  - Spec: **FAIL** with two blocking findings.
+  - Overall: **REVIEW-FAILED**.
+- Diary fixed range:
+  `898a6056068ce282e36399d568ea6350bb413f29...5f7362f2ccaf0174dd9e74cf346d4bd20a5a08f4`.
+- Personal Website fixed range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...3d1e27ea3d78eb20d44b1ef0a63defd64f0dd1b5`.
+- Both review axes ran independently and in parallel against only these fixed
+  three-dot ranges and inspected all 13 changed files.
+
+#### Preflight and GitHub Actions
+
+- Both worktrees were clean at review start, and both HEADs exactly matched
+  their specified implementation endpoints on `main` and `origin/main`.
+- GitHub contained both implementation commits. Both fixed ranges were
+  non-empty, with one implementation commit in each, and both exact-range
+  `git diff --check` commands passed.
+- Exact-SHA GitHub Actions were green:
+  - Diary `Backend checks`, run
+    [30838455294](https://github.com/oscar940327/diary/actions/runs/30838455294),
+    completed successfully for
+    `5f7362f2ccaf0174dd9e74cf346d4bd20a5a08f4`.
+  - Personal Website `Website checks and Pages`, run
+    [30838197198](https://github.com/oscar940327/my-personal-website/actions/runs/30838197198),
+    and `pages build and deployment`, run
+    [30838188357](https://github.com/oscar940327/my-personal-website/actions/runs/30838188357),
+    completed successfully for
+    `3d1e27ea3d78eb20d44b1ef0a63defd64f0dd1b5`.
+
+#### Blocking Spec findings
+
+- **High - loaded History window and reading anchor are lost after Entry Time
+  save.** Personal Website `src/diary/EntryExperience.tsx:349-352,673-686`
+  first merges the moved Entry and consumes the pending reading anchor, then
+  starts a cursorless refresh that replaces every previously loaded History
+  page and both cursors with only the new initial page. After loading an older
+  page and changing an Entry there, the Entry or its reading neighbor can
+  disappear and the viewport can jump. This violates the specification's
+  bidirectional History and explicit scroll-anchoring contract and the Ticket
+  08 no-regression requirement. Reconstruct the loaded window from a new
+  snapshot around the preserved or moved Entry, restore the anchor after the
+  final data is present, and add a real Chromium case with more than one
+  History page.
+- **Medium - normalization-overflow and direct-RPC timestamp ranges are not
+  rejected safely.** Diary `src/diary_api/app.py:101-111` lets an offset-aware
+  boundary value such as
+  `9999-12-31T23:59:59.999999-14:00` raise an uncaught `OverflowError` during
+  UTC normalization, producing HTTP 500 rather than a validation response.
+  Migration
+  `supabase/migrations/20260804120000_change_entry_time_and_stabilize_history.sql:33-48`
+  independently accepts PostgreSQL timestamps beyond Python's readable range
+  through the owner-token RPC. This violates invalid-input rejection and lets
+  the controlled mutation path create Entry metadata that FastAPI cannot read.
+  Enforce one UTC-normalization-safe range in FastAPI and PostgreSQL, translate
+  overflow into validation failure, and cover both HTTP and direct-RPC paths
+  while asserting the Entry, revisions, and processing remain unchanged.
+
+#### Non-blocking Standards judgements
+
+- **Low - possible Divergent Change.** Personal Website
+  `src/diary/EntryExperience.tsx:249,276-299,640-692,1051-1119` adds Entry Time
+  state, mutation orchestration, anchor handling, and dialog rendering to the
+  already broad component. A focused Entry Time editor/controller module would
+  improve locality.
+- **Low - Duplicated Code.** Diary `src/diary_api/app.py:67-77,106-111`
+  repeats the offset-aware Entry Time validation and UTC normalization between
+  create and change requests. A shared validator would prevent semantic drift.
+- **Low - Mysterious Name.** Diary `.github/workflows/ci.yml:22-26` still names
+  the step `Check out Ticket 07 frontend` while pinning the Ticket 08 Website
+  commit. Rename the step to identify the reviewed Diary frontend accurately.
+
+No Ticket 09 scope creep, committed secret, or additional blocking finding was
+found. Ticket 08 remains `ready-for-agent` for the two Spec fixes, and Ticket
+09 must not begin until a fresh fixed-range review passes.
