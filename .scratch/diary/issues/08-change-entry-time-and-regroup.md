@@ -448,3 +448,169 @@ found. Ticket 08 remains `ready-for-agent` for the two Spec fixes, and Ticket
 - Diary CI now pins that exact Personal Website commit. The resulting Diary
   exact Head and its Actions result are reported in the implementation handoff
   after the Diary commit containing this record is pushed and verified.
+
+### 2026-08-05 - Fresh fixed-range code review requires changes
+
+#### Findings and verdicts
+
+- Overall verdict: **CHANGES-REQUIRED**.
+- Standards verdict: **CHANGES-REQUIRED** with three blocking correctness or
+  lifecycle defects, no separate documented-style violation, and two
+  non-blocking smell judgements.
+- Spec verdict: **CHANGES-REQUIRED** with two blocking findings.
+- The two axes ran independently and inspected all 17 changed files across both
+  complete fixed ranges. Passing tests were treated as evidence, not as a
+  substitute for code inspection.
+
+##### Blocking Standards findings
+
+1. **High - the active-Entry search bound can be both too short and
+   lifetime-sized.** Personal Website
+   `src/diary/EntryExperience.tsx:173-182,212-216` derives the request budget
+   from the previously rendered Entry count. With only the initial 20 Entries
+   loaded and the moved active Entry ranked 41st on its destination date, the
+   rebuild permits only the initial request plus one older request, stops after
+   ranks 1-40, and throws before requesting the bounded third page containing
+   the anchor. Every `Refresh History` retry repeats the same deterministic
+   failure. At the other extreme, if 500 lifetime Entries were previously
+   loaded, the same formula permits re-downloading approximately all 500.
+   This can leave a committed Entry Time change without a recoverable History
+   window or download the full lifetime History, violating the explicit
+   active-Entry, bounded-search and incremental-History requirements in this
+   review and `.scratch/diary/spec.md:200`.
+2. **High - a pre-mutation root refresh can reinstall an old snapshot after
+   rebuild or recovery.** Personal Website
+   `src/diary/EntryExperience.tsx:435-460,791-822` keeps the initial/midnight
+   cursorless `refreshHistory` outside `historyGeneration`, and its local
+   controller cannot be aborted by the Entry Time mutation. Delay a midnight
+   refresh after it obtains the old snapshot, commit the mutation, then let the
+   fresh rebuild succeed or fail into cursor-cleared recovery before releasing
+   the delayed response. Lines 449-453 unconditionally reinstall old Entry
+   data and cursors. Stale pagination can then overwrite the committed Entry
+   Time and contradict refreshed Calendar counts. This violates the required
+   React async-generation and cursor/snapshot ownership lifecycle, including
+   the explicit rule that old-generation responses cannot overwrite recovery.
+3. **Medium - Calendar navigation does not retire stale recovery ownership.**
+   Personal Website `src/diary/EntryExperience.tsx:842-872,1018-1035` leaves
+   `historyRecovery` intact when the owner selects a different Calendar date
+   after a rebuild failure. The normal date jump loads the newly selected
+   History, but the still-visible `Refresh History` action can later replace it
+   with the old recovery window and cursors while the URL and `anchorDate`
+   continue to identify the selected date. This produces incoherent Calendar
+   navigation and History ownership, violating the specification's
+   Calendar-as-History-anchor and fresh-snapshot recovery requirements.
+
+##### Blocking Spec findings
+
+1. **High - the rank-41 active Entry is not found from an initial 20-Entry
+   window.** Personal Website
+   `src/diary/EntryExperience.tsx:173-182,212-216` allows exactly two requests
+   when `targetEntryCount` is 20. If 40 destination-date Entries sort before
+   the active Entry, the permitted pages return only those 40 and the rebuild
+   fails before the third bounded request. The dense regression first loads 40
+   Entries, which raises its budget to three and masks this initial-only case.
+   Recovery retries retain the same insufficient bound. This directly violates
+   this review's requirement that an active Entry behind at least 40 peers is
+   actually found without downloading lifetime History.
+2. **High - an in-flight old-generation cursorless response can overwrite
+   recovery state.** Personal Website
+   `src/diary/EntryExperience.tsx:421-471,791-831` does not give the root
+   refresh a generation check or a controller shared with the mutation. The
+   delayed-midnight-refresh scenario above restores old Entries and cursors
+   after the committed mutation, allowing stale responses to disagree with
+   Calendar and the committed Entry Time. This violates the explicit
+   no-old-cursor/new-data, old-generation isolation and correct-regroup
+   invariants.
+
+The first and second items appear once under each axis because Standards and
+Spec were deliberately reviewed and reported independently. There are three
+unique blocking defects and five axis-specific blocking findings.
+
+#### Non-blocking Standards judgements
+
+- **Low - Duplicated Code.** Personal Website
+  `src/diary/EntryExperience.tsx:804-809,866-872` repeats the fresh History
+  window installation sequence. A small shared helper could reduce lifecycle
+  drift, but this is a judgement, not mandatory Ticket 08 work.
+- **Low - possible Divergent Change.** Personal Website
+  `src/diary/EntryExperience.tsx:81-223,336-885,1189-1290` continues to contain
+  timestamp conversion, pagination/recovery orchestration and Entry Time dialog
+  rendering. This is a non-blocking smell judgement only; this review does not
+  request or authorize a broad `EntryExperience` refactor.
+- One verification-order observation is recorded but is not a Ticket 08 range
+  finding: running `test_continuous_history.py` before
+  `test_calendar_navigation.py` left shared 2099 rows visible to a pre-existing
+  2090 "after last Entry" assertion, producing `38 passed, 1 failed`. The
+  changed hunk in that existing test file only adapts an RPC argument cast.
+  Running the same 39 focused cases in repository order passed, and the full
+  suite passed in its normal order.
+
+#### Fixed ranges and implementation Heads
+
+- Diary implementation Head:
+  `432ed2f353d86359b1810d19772a5bda6870a748`.
+- Diary fixed three-dot range:
+  `898a6056068ce282e36399d568ea6350bb413f29...432ed2f353d86359b1810d19772a5bda6870a748`.
+- Personal Website implementation Head:
+  `7a480780aaf8090f0f610be0a04f25a02abb00e3`.
+- Personal Website fixed three-dot range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...7a480780aaf8090f0f610be0a04f25a02abb00e3`.
+
+#### Preflight and exact-Head GitHub evidence
+
+- Both repositories were clean at review start. Each local `HEAD` exactly
+  matched its expected SHA and `origin/main`.
+- Both review bases existed locally. Each `git merge-base` exactly equalled
+  the requested base, both ranges were non-empty (five Diary commits and three
+  Personal Website commits), and both complete-range `git diff --check`
+  commands returned zero.
+- GitHub contained both exact implementation commits.
+- Diary `Backend checks` run
+  [30936747912](https://github.com/oscar940327/diary/actions/runs/30936747912)
+  matched Head `432ed2f353d86359b1810d19772a5bda6870a748` and was
+  `completed/success`.
+- Personal Website `Website checks and Pages` run
+  [30936484930](https://github.com/oscar940327/my-personal-website/actions/runs/30936484930)
+  and `pages build and deployment` run
+  [30936483458](https://github.com/oscar940327/my-personal-website/actions/runs/30936483458)
+  both matched Head `7a480780aaf8090f0f610be0a04f25a02abb00e3` and were
+  `completed/success`. Every job returned by GitHub for all three runs was also
+  `completed/success`.
+
+#### Local verification
+
+- Ordered Supabase `db reset` passed and applied the complete migration chain
+  through `20260805120000_harden_create_entry_time_range.sql`.
+- `python -m mypy src tests` passed with no issue.
+- The Ticket 04-08 History, Calendar, Revision, Entry Time and real mobile
+  Chromium focused set passed `39 passed in 53.57s` in repository order.
+  The alternate-order `38 passed, 1 failed` observation is preserved above and
+  is not reported as a pass.
+- `python -m pytest -q` passed `80 passed` in `79.33s`, with the existing one
+  Starlette/httpx deprecation warning.
+- Personal Website `npm.cmd run typecheck` passed.
+- Personal Website `npm.cmd run test:e2e` passed all `23` Chromium tests.
+- Personal Website `npm.cmd run build` passed; the existing non-module-script
+  Vite warnings remained informational.
+- Personal Website `npm.cmd run verify:build` passed after that build.
+- The green suites do not exercise the three blocking lifecycle scenarios
+  above, so the review remains `CHANGES-REQUIRED`.
+
+#### Confirmed scope and next step
+
+- Diary backend validation, ordered migrations, Create/Change RPC
+  authentication and RLS, immutable `created_at`, unchanged Entry Revisions and
+  AI obligations, microsecond/UUID ordering, Python-safe direct Create
+  rejection, previous application RPC compatibility, CI checkout naming and
+  exact frontend pin showed no additional blocking finding.
+- No secret-bearing frontend value or unrelated HOME, PROJECT, JOURNEY,
+  MktAgent or VideoNote change was found. Ticket 09, Trash, deletion, AI
+  generation, Queue, RAG and Agent work remain outside this range. No broad
+  `EntryExperience` refactor was requested or performed.
+- This session changed only this Ticket 08 review documentation. It did not fix
+  findings, modify product code, tests, migrations or the CI pin, modify the
+  Personal Website repository, start Ticket 09, or create a PR.
+- Ticket 08 remains `ready-for-agent`; another independent Ticket 08 fix/TDD
+  session is required. Ticket 09 remains blocked. The next allowed session is
+  only that Ticket 08 fix/TDD session, followed later by another fresh
+  fixed-range review; Ticket 09 must not begin in this review session.
