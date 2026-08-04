@@ -57,7 +57,7 @@ class PendingCapture:
             "select 'ENTRY_ID:' || id::text "
             "from public.create_diary_entry("
             f"'{original_content}', "
-            f"'{entry_at}'::timestamptz, "
+            f"'{entry_at}'::text, "
             f"'{idempotency_key}'"
             ");\n"
             "\\echo CAPTURE_PENDING\n"

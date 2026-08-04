@@ -350,3 +350,101 @@ found. Ticket 08 remains `ready-for-agent` for the two Spec fixes, and Ticket
   site refactor, or push occurred. Ticket 08 remains `ready-for-agent`, and
   Ticket 09 must not begin until these findings are fixed and another complete
   fixed-range review passes.
+
+### 2026-08-05 - Latest blocking findings fixed; fresh review still required
+
+#### TDD red evidence
+
+- Active-Entry History rebuild red: the new real 390-by-844 Chromium journey
+  seeded 140 lifetime Entries, loaded two 20-Entry pages, read an Entry on page
+  two, and moved it behind 40 Entries on a dense destination date. The rebuild
+  stopped at the old 40-Entry target before locating the moved Entry: the test
+  expected the required third bounded page and 60 rendered Entries but received
+  only 40.
+- Fresh-snapshot recovery red: after the mocked Change Entry Time boundary
+  returned `200` and the first cursorless fresh History request returned `503`,
+  the UI still rendered `Load newer Entries`. The regression expected zero old
+  cursor controls but received one, proving committed data could still paginate
+  through the pre-mutation snapshot.
+- Direct Create RPC red: an authenticated owner called real PostgREST
+  `create_diary_entry` with `10000-01-01T00:00:00+00:00`; the RPC returned
+  `200` and created the Entry, Revision, AI-processing obligation and History
+  position instead of rejecting before writes.
+- Ancient-year ordering red: the focused Chromium History test supplied known
+  UTC ordering across years `0001`, `0099`, `0100` and `1800`. The browser put
+  all year-0099 Entries ahead of year 1800 because `Date.UTC` remapped 0099 to
+  1999.
+
+#### Minimal fixes and green evidence
+
+- History rebuild now receives the preserved reading or moved Entry UUID and
+  continues bounded 20-Entry requests until both the target window size and
+  that exact Entry anchor are present. It fails closed if the Entry cannot be
+  located within the bound. The real dense-date mobile Chromium regression
+  passed, preserved the Entry within 8 pixels, rebuilt 60 Entries rather than
+  shrinking the loaded window, used one new snapshot for rebuild and both
+  later directions, rendered no duplicate among 100 covered Entries, kept the
+  window below the 140-Entry lifetime, and updated both Calendar counts.
+- A committed mutation whose rebuild fails now clears both old cursors and
+  retains an explicit recovery record containing the Entry UUID, anchor date,
+  target count and reading anchor. `Refresh History` performs another bounded
+  rebuild; only its completed fresh window installs cursors and restores the
+  anchor. The Chromium recovery regression passed with no old-snapshot request,
+  consistent committed History and Calendar dates, one recovery snapshot and
+  successful newer/older continuation.
+- Ordered expand-contract migration
+  `20260805120000_harden_create_entry_time_range.sql` adds a Python-safe UTC
+  range constraint and replaces only the controlled Create RPC contract with a
+  text-preserving, offset-aware implementation. Validation occurs before the
+  first insert. The real direct-RPC regression passed for upper and lower UTC
+  normalization overflow, PostgreSQL year 10000, offsetless input and invalid
+  offset; all returned `400`, and Entries, Entry Revisions, AI obligations,
+  History positions and idempotency state remained byte-for-byte unchanged.
+  Omitted and null Entry Time still default to now and remain readable through
+  FastAPI; the existing FastAPI application Create path still returned `201`.
+- Browser ordering now converts proleptic-Gregorian civil dates and offsets
+  directly to bigint microseconds. It does not use `Date` or millisecond
+  precision for final sorting. The focused Chromium regression passed the
+  `0001`/`0099`/`0100`/`1800` order, six-digit microseconds, offset
+  normalization and equal-time descending UUID tie-break.
+
+#### Verification and preserved boundaries
+
+- Ordered local Supabase reset applied every migration through
+  `20260805120000` successfully.
+- Diary passed `python -m mypy src tests`; the Ticket 04-08 History, Calendar,
+  Revision, Entry Time and real mobile Chromium focused set passed `39 passed`;
+  and `python -m pytest -q` passed `80 passed` with the existing single
+  Starlette/httpx deprecation warning.
+- Personal Website passed `npm.cmd run typecheck`, all `23` Playwright Chromium
+  tests, `npm.cmd run build`, and `npm.cmd run verify:build`.
+- Create Entry and Change Entry Time continue sharing the same FastAPI
+  UTC-normalization-safe validator. PostgreSQL Create and Change enforce the
+  same UTC year 0001-9999 range. The Create RPC remains `security invoker`,
+  owner-token authenticated, and RLS-enforced; FastAPI singleton-owner checks
+  and forced PostgreSQL RLS remain independent defenses. Direct table PATCH of
+  `entry_at` or immutable `created_at` remains denied.
+- Successful Entry Time changes still create, alter or delete no Entry
+  Revision or AI-processing obligation; Original Content, Revision
+  `created_at`, immutable Entry `created_at`, microsecond/UUID History order,
+  edit/restore atomicity and invalid-request rollback remain covered and green.
+- No existing migration was edited. The migration is additive outside the
+  controlled RPC replacement, preserves the previous application's named
+  PostgREST arguments and return shape, and was exercised by the unchanged
+  FastAPI store contract, satisfying ADR 0013's rollback compatibility window.
+- No Ticket 09, Trash, deletion, AI generation, Queue, RAG, Agent, broad
+  `EntryExperience` refactor, new secret, or unrelated site work was started.
+- This implementation/fix session did not perform code review and does not
+  claim Ticket 08 review passed. Ticket 08 remains `ready-for-agent`; the next
+  step is a separate fresh fixed-range code-review session over the original
+  Ticket 08 bases and the new exact repository Heads.
+- Personal Website fix commit
+  `7a480780aaf8090f0f610be0a04f25a02abb00e3` was pushed first. Its exact-Head
+  `Website checks and Pages` run
+  [30936484930](https://github.com/oscar940327/my-personal-website/actions/runs/30936484930)
+  and `pages build and deployment` run
+  [30936483458](https://github.com/oscar940327/my-personal-website/actions/runs/30936483458)
+  both completed successfully before the Diary CI pin was changed.
+- Diary CI now pins that exact Personal Website commit. The resulting Diary
+  exact Head and its Actions result are reported in the implementation handoff
+  after the Diary commit containing this record is pushed and verified.

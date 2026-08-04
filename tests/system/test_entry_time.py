@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import AbstractContextManager
 from typing import Callable, Protocol, cast
 
@@ -96,6 +96,23 @@ def _history_positions(
             "&order=valid_from_xid.asc"
         ),
         headers=_postgrest_headers(settings, access_token),
+    )
+    assert response.status_code == 200, response.text
+    return cast(list[dict[str, object]], response.json())
+
+
+def _table_rows(
+    settings: SupabaseSettings,
+    access_token: str,
+    table: str,
+    select: str,
+) -> list[dict[str, object]]:
+    response = httpx.get(
+        f"{settings.api_url}/rest/v1/{table}",
+        headers=_postgrest_headers(settings, access_token),
+        params={"select": select, "order": "created_at.asc"}
+        if "created_at" in select
+        else {"select": select},
     )
     assert response.status_code == 200, response.text
     return cast(list[dict[str, object]], response.json())
@@ -689,6 +706,117 @@ def test_direct_rpc_rejects_python_unsafe_timestamps_without_partial_change(
         owner_access_token,
         original["id"],
     ) == positions_before
+
+
+def test_direct_create_rpc_rejects_python_unsafe_timestamps_before_writes(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    endpoint = f"{local_supabase.api_url}/rest/v1/rpc/create_diary_entry"
+    table_selections = {
+        "entries": (
+            "id,entry_at,idempotency_key,current_revision_id,created_at"
+        ),
+        "entry_revisions": "id,entry_id,original_content,created_at",
+        "ai_processing": "id,entry_revision_id,state,created_at",
+        "entry_history_positions": (
+            "entry_id,entry_at,valid_from_xid,valid_until_xid"
+        ),
+    }
+    rows_before = {
+        table: _table_rows(
+            local_supabase,
+            owner_access_token,
+            table,
+            select,
+        )
+        for table, select in table_selections.items()
+    }
+    unsafe_timestamps = (
+        "10000-01-01T00:00:00+00:00",
+        "9999-12-31T23:59:59.999999-14:00",
+        "0001-01-01T00:00:00+14:00",
+        "2082-08-21T12:00:00",
+        "2082-08-21T12:00:00+25:00",
+    )
+
+    for index, entry_at in enumerate(unsafe_timestamps):
+        response = httpx.post(
+            endpoint,
+            headers=_postgrest_headers(
+                local_supabase,
+                owner_access_token,
+            ),
+            json={
+                "p_original_content": (
+                    f"Unsafe direct Create RPC boundary {index}."
+                ),
+                "p_entry_at": entry_at,
+                "p_idempotency_key": f"unsafe-direct-create-{index}",
+            },
+        )
+        assert response.status_code == 400, response.text
+
+    assert {
+        table: _table_rows(
+            local_supabase,
+            owner_access_token,
+            table,
+            select,
+        )
+        for table, select in table_selections.items()
+    } == rows_before
+
+    for suffix, optional_entry_at in (
+        ("omitted", ...),
+        ("null", None),
+    ):
+        body: dict[str, object] = {
+            "p_original_content": (
+                f"Direct Create defaults Entry Time when {suffix}."
+            ),
+            "p_idempotency_key": f"direct-create-default-{suffix}",
+        }
+        if optional_entry_at is not ...:
+            body["p_entry_at"] = optional_entry_at
+        response = httpx.post(
+            endpoint,
+            headers=_postgrest_headers(
+                local_supabase,
+                owner_access_token,
+            ),
+            json=body,
+        )
+        assert response.status_code == 200, response.text
+        created = response.json()
+        assert len(created) == 1
+        assert created[0]["was_created"] is True
+        parsed_entry_at = datetime.fromisoformat(created[0]["entry_at"])
+        assert parsed_entry_at.tzinfo is not None
+        assert abs(
+            (datetime.now(timezone.utc) - parsed_entry_at).total_seconds()
+        ) < 30
+        detail_response = httpx.get(
+            f"{diary_api}/entries/{created[0]['id']}",
+            headers=_owner_headers(owner_access_token),
+        )
+        assert detail_response.status_code == 200, detail_response.text
+
+    application_response = httpx.post(
+        f"{diary_api}/entries",
+        headers={
+            **_owner_headers(owner_access_token),
+            "X-Idempotency-Key": "application-create-after-expand",
+        },
+        json={
+            "entry_at": "2082-08-22T12:00:00+08:00",
+            "original_content": (
+                "The existing application revision can still Create Entry."
+            ),
+        },
+    )
+    assert application_response.status_code == 201, application_response.text
 
 
 def test_owner_cannot_patch_entry_metadata_outside_controlled_action(

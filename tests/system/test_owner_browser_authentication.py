@@ -256,6 +256,215 @@ def test_entry_time_change_rebuilds_loaded_history_on_one_new_snapshot(
     ).to_be_visible()
 
 
+def test_entry_time_change_finds_the_active_entry_on_a_dense_target_date(
+    page: Page,
+    diary_api: str,
+    diary_application: str,
+    owner_access_token: str,
+    owner_magic_link: Callable[[], str],
+) -> None:
+    taipei_today = datetime.now(ZoneInfo("Asia/Taipei")).date()
+    next_month = (
+        taipei_today.replace(day=28) + timedelta(days=4)
+    ).replace(day=1)
+    anchor_day = next_month.replace(day=13)
+    dates = [
+        anchor_day + timedelta(days=1),
+        anchor_day,
+        anchor_day - timedelta(days=1),
+        anchor_day - timedelta(days=2),
+        anchor_day - timedelta(days=3),
+        anchor_day - timedelta(days=4),
+    ]
+    (
+        newest_date,
+        anchor_date,
+        reading_date,
+        dense_date,
+        older_date,
+        oldest_date,
+    ) = (value.isoformat() for value in dates)
+    calendar_month = anchor_date[:7]
+
+    with httpx.Client(timeout=20) as client:
+        calendar_before_response = client.get(
+            f"{diary_api}/entries/calendar",
+            headers={"Authorization": f"Bearer {owner_access_token}"},
+            params={"month": calendar_month},
+        )
+        assert calendar_before_response.status_code == 200
+        baseline_counts = {
+            day["date"]: day["entry_count"]
+            for day in calendar_before_response.json()["days"]
+        }
+
+        seeded_entries: dict[str, dict[str, object]] = {}
+        for owner_date in (
+            newest_date,
+            anchor_date,
+            reading_date,
+            older_date,
+            oldest_date,
+        ):
+            for hour in range(20):
+                content = f"Dense window {owner_date} hour {hour:02d}."
+                seeded_entries[content] = _capture_history_entry(
+                    client,
+                    diary_api,
+                    owner_access_token,
+                    content=content,
+                    entry_at=f"{owner_date}T{hour:02d}:00:00+08:00",
+                    idempotency_key=(
+                        f"dense-history-window-{owner_date}-{hour:02d}"
+                    ),
+                )
+        for minute in range(40):
+            content = f"Dense target {dense_date} rank {minute:02d}."
+            seeded_entries[content] = _capture_history_entry(
+                client,
+                diary_api,
+                owner_access_token,
+                content=content,
+                entry_at=f"{dense_date}T12:{minute:02d}:00+08:00",
+                idempotency_key=f"dense-target-{dense_date}-{minute:02d}",
+            )
+
+    assert len(seeded_entries) == 140
+    moving_content = f"Dense window {reading_date} hour 19."
+    moving_entry = seeded_entries[moving_content]
+    history_requests: list[str] = []
+
+    def record_history_request(request: Request) -> None:
+        url = request.url
+        if urlsplit(url).path.endswith("/entries/history"):
+            history_requests.append(url)
+
+    page.on("request", record_history_request)
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto(f"{diary_application}/diary.html")
+    page.get_by_label("Owner email").fill("owner@diary.test")
+    page.get_by_role("button", name="Send Magic Link").click()
+    expect(page.get_by_role("status")).to_contain_text("Check your email")
+    page.goto(owner_magic_link())
+    expect(page.get_by_text("Authenticated Diary is ready.")).to_be_visible()
+
+    page.goto(f"{diary_application}/diary.html?date={anchor_date}")
+    expect(page.locator("article.diary-entry")).to_have_count(20)
+    page.get_by_role("button", name="Load older Entries").click()
+    expect(page.locator("article.diary-entry")).to_have_count(40)
+    old_cursor_snapshot = next(
+        snapshot
+        for snapshot in (
+            _history_snapshot(url) for url in history_requests
+        )
+        if snapshot is not None
+    )
+
+    moved_entry = page.locator(f"#entry-{moving_entry['id']}")
+    expect(moved_entry).to_be_visible()
+    moved_entry.evaluate("element => element.scrollIntoView({block: 'start'})")
+    page.wait_for_timeout(100)
+    top_before = moved_entry.bounding_box()
+    assert top_before is not None
+
+    moved_entry.get_by_text("Entry actions", exact=True).click()
+    moved_entry.get_by_role(
+        "button",
+        name="Change Entry Time",
+    ).click()
+    editor = page.get_by_role("dialog", name="Change Entry Time")
+    editor.get_by_label("New Entry Time").fill(f"{dense_date}T00:00")
+    post_change_start = len(history_requests)
+    with page.expect_response(
+        lambda response: (
+            urlsplit(response.url).path.endswith("/entries/history")
+            and "cursor" not in parse_qs(urlsplit(response.url).query)
+        )
+    ):
+        editor.get_by_role("button", name="Save Entry Time").click()
+
+    expect(moved_entry).to_be_visible()
+    expect(page.locator("article.diary-entry")).to_have_count(60)
+    top_after = moved_entry.bounding_box()
+    assert top_after is not None
+    assert abs(top_after["y"] - top_before["y"]) <= 8
+    moved_group = moved_entry.locator("xpath=ancestor::section[1]")
+    expect(
+        moved_group.get_by_role("heading", name=dense_date, exact=True)
+    ).to_be_visible()
+
+    rebuilt_request_urls = history_requests[post_change_start:]
+    assert len(rebuilt_request_urls) == 3
+    rebuilt_snapshots = {
+        snapshot
+        for snapshot in (
+            _history_snapshot(url) for url in rebuilt_request_urls
+        )
+        if snapshot is not None
+    }
+    assert len(rebuilt_snapshots) == 1
+    assert old_cursor_snapshot not in rebuilt_snapshots
+
+    page.get_by_role("button", name="Load newer Entries").click()
+    expect(page.locator("article.diary-entry")).to_have_count(80)
+    page.get_by_role("button", name="Load older Entries").click()
+    expect(page.locator("article.diary-entry")).to_have_count(100)
+
+    for content in [
+        *(f"Dense target {dense_date} rank {minute:02d}." for minute in range(40)),
+        moving_content,
+    ]:
+        expect(page.get_by_text(content, exact=True)).to_have_count(1)
+    rendered_ids = page.locator("article.diary-entry").evaluate_all(
+        "elements => elements.map(element => element.id)"
+    )
+    assert len(rendered_ids) == 100
+    assert len(rendered_ids) == len(set(rendered_ids))
+    assert len(rendered_ids) < len(seeded_entries)
+
+    post_change_request_urls = history_requests[post_change_start:]
+    assert len(post_change_request_urls) == 5
+    assert {
+        snapshot
+        for snapshot in (
+            _history_snapshot(url) for url in post_change_request_urls
+        )
+        if snapshot is not None
+    } == rebuilt_snapshots
+    assert all(
+        int(parse_qs(urlsplit(url).query).get("limit", ["20"])[0]) <= 20
+        for url in post_change_request_urls
+    )
+
+    page.get_by_role("button", name="Calendar").click()
+    expect(page.get_by_role("heading", name="Calendar", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Next month").click()
+    reading_date_label = (
+        f"{dates[2].strftime('%B')} {dates[2].day}, {dates[2].year}"
+    )
+    dense_date_label = (
+        f"{dates[3].strftime('%B')} {dates[3].day}, {dates[3].year}"
+    )
+    expect(
+        page.get_by_role(
+            "button",
+            name=(
+                f"{reading_date_label}, "
+                f"{baseline_counts.get(reading_date, 0) + 19} Entries"
+            ),
+        )
+    ).to_be_visible()
+    expect(
+        page.get_by_role(
+            "button",
+            name=(
+                f"{dense_date_label}, "
+                f"{baseline_counts.get(dense_date, 0) + 41} Entries"
+            ),
+        )
+    ).to_be_visible()
+
+
 def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
     page: Page,
     diary_application: str,
