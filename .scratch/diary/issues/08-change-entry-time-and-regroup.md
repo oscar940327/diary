@@ -249,3 +249,104 @@ found. Ticket 08 remains `ready-for-agent` for the two Spec fixes, and Ticket
 - This fix session did not run code review and did not push either repository.
   The prior review remains failed until a new session reviews the original
   Ticket 08 bases against the new repository Heads. Ticket 09 remains blocked.
+
+### 2026-08-04 - Fresh fixed-range code review still requires changes
+
+#### Verdict and fixed ranges
+
+- Review verdict: **CHANGES-REQUIRED**.
+  - Standards: **PASS** with no hard or documented-standard violation and one
+    low-severity, non-blocking maintainability judgement.
+  - Spec: **FAIL** with four blocking findings.
+  - Overall: **REVIEW-FAILED**.
+- Diary fixed range:
+  `898a6056068ce282e36399d568ea6350bb413f29...189bd18e9f498124f5282fdb37b296b82ef98c82`.
+- Personal Website fixed range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...7898db9691d41f3f418a27250387164531359aac`.
+- Both axes independently reviewed the complete three-dot ranges, including
+  the original Ticket 08 implementation, prior review record, and blocker-fix
+  commits rather than only the latest fix.
+
+#### Preflight and GitHub Actions
+
+- Both worktrees were clean at review start and both HEADs exactly matched the
+  requested SHAs. Both bases resolved, both merge-bases matched the requested
+  bases, both ranges were non-empty, and both `git diff --check` commands
+  passed.
+- GitHub contained both exact Head commits. Exact-SHA Actions were green:
+  - Diary `Backend checks`, run
+    [30912948403](https://github.com/oscar940327/diary/actions/runs/30912948403).
+  - Personal Website `Website checks and Pages`, run
+    [30912247537](https://github.com/oscar940327/my-personal-website/actions/runs/30912247537),
+    and `pages build and deployment`, run
+    [30912242257](https://github.com/oscar940327/my-personal-website/actions/runs/30912242257).
+
+#### Blocking Spec findings
+
+- **High - History rebuild is date-anchored, not Entry-anchored.** Personal
+  Website `src/diary/EntryExperience.tsx:139-202,749-773` rebuilds from only an
+  `anchorDate` and always follows `olderCursor` first. If at least 40 Entries
+  on the target date sort ahead of the moved or reading Entry, the initial and
+  older requests fill the target count before that Entry is returned. The
+  active Entry then disappears, `restoreReadingAnchor` has no element to
+  restore, and the viewport and loaded reading window change. This violates
+  the bidirectional History and explicit scroll-anchor contract and the prior
+  fix requirement to rebuild around the preserved or moved Entry. The real
+  Chromium regression seeds exactly 20 Entries per date and moves the new
+  date's newest Entry, so it does not exercise this case.
+- **High - a failed rebuild mixes committed data with old snapshot cursors.**
+  Personal Website `src/diary/EntryExperience.tsx:516-554,781-794,1015-1108`
+  merges the committed Entry after a post-mutation History request fails but
+  leaves the old `olderCursor` and `newerCursor` active. A subsequent Load
+  newer/older action uses the pre-change snapshot; its historical row can
+  overwrite the committed Entry Time in `mergeEntries`, causing wrong grouping
+  and disagreement with refreshed Calendar counts. The error text suggests
+  loading History again but provides no fresh-snapshot refresh action. This
+  violates the explicit no-old-cursor/new-data invariant and has no regression
+  test.
+- **High - direct Create RPC still accepts Python-unsafe Entry Time.** Diary
+  `supabase/migrations/20260728100000_run_entry_rpcs_as_authenticated_owner.sql:46-65,97-116,188-200,242-255`
+  exposes `create_diary_entry(..., timestamptz, ...)` to `authenticated` and
+  inserts `p_entry_at` without an offset-text check or Python-safe UTC range.
+  No later migration or table constraint closes this path; the Ticket 08
+  hardening migration changes only `change_diary_entry_time`. An owner token
+  can therefore directly create an Entry at PostgreSQL year 10000, including
+  its Revision, processing obligation, and History position, after which
+  Python `EntryRecord` cannot safely parse the metadata. This violates the
+  required FastAPI/PostgreSQL range invariant and the prohibition on direct
+  RPC writes that FastAPI cannot read. Existing boundary tests cover only the
+  Change Entry Time RPC.
+- **Medium - valid lower-bound years are misordered in the browser.** Personal
+  Website `src/diary/EntryExperience.tsx:74-123` passes the parsed year to
+  `Date.UTC`; ECMAScript maps years 0 through 99 to 1900 through 1999. Thus a
+  valid year `0001` Entry is treated as 1901 during `sortEntries` and can sort
+  above a genuinely newer Entry such as year 1800. This violates reverse-
+  chronological History ordering across the accepted Python-safe range. The
+  new tests cover lower normalization overflow, not valid years 0001-0099.
+
+#### Standards judgement and verification
+
+- **Low - possible Divergent Change.** Personal Website
+  `src/diary/EntryExperience.tsx:139-203,315-393,714-803,1160-1233` keeps
+  History rebuilding, scroll-anchor lifecycle, Entry Time mutation/error
+  recovery, Calendar invalidation, and dialog rendering in the already broad
+  page component. This is a non-blocking smell judgement, not a documented-
+  standard violation, and a broad refactor remains outside Ticket 08.
+- Local checks passed: `python -m mypy src tests`; `19` backend unit tests;
+  Personal Website typecheck, all `21` mocked Playwright tests, build, and
+  build-output verification. A direct Node probe confirmed the year 0-99
+  `Date.UTC` remapping.
+- The focused real-system Ticket 08 run could not start locally because Docker
+  Desktop was not running; all 12 selected cases stopped in fixture setup, so
+  this was an environment limitation rather than a product-test failure. The
+  exact-SHA GitHub Actions runs above remain green, but their passing suites do
+  not cover the four scenarios identified here.
+- The shared FastAPI validator, Change Entry Time RPC rejection atomicity,
+  Entry Revision and AI-obligation invariants, RLS and owner checks, CI naming
+  and exact frontend pin, expand-contract compatibility, ordinary
+  microsecond/UUID tie ordering, and Calendar refresh showed no additional
+  finding in the reviewed cases.
+- No Ticket 09 scope, production/test change, committed secret, broad existing-
+  site refactor, or push occurred. Ticket 08 remains `ready-for-agent`, and
+  Ticket 09 must not begin until these findings are fixed and another complete
+  fixed-range review passes.
