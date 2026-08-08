@@ -256,7 +256,7 @@ def test_entry_time_change_rebuilds_loaded_history_on_one_new_snapshot(
     ).to_be_visible()
 
 
-def test_entry_time_change_finds_the_active_entry_on_a_dense_target_date(
+def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
     page: Page,
     diary_api: str,
     diary_application: str,
@@ -330,7 +330,7 @@ def test_entry_time_change_finds_the_active_entry_on_a_dense_target_date(
             )
 
     assert len(seeded_entries) == 140
-    moving_content = f"Dense window {reading_date} hour 19."
+    moving_content = f"Dense window {anchor_date} hour 19."
     moving_entry = seeded_entries[moving_content]
     history_requests: list[str] = []
 
@@ -350,16 +350,6 @@ def test_entry_time_change_finds_the_active_entry_on_a_dense_target_date(
 
     page.goto(f"{diary_application}/diary.html?date={anchor_date}")
     expect(page.locator("article.diary-entry")).to_have_count(20)
-    page.get_by_role("button", name="Load older Entries").click()
-    expect(page.locator("article.diary-entry")).to_have_count(40)
-    old_cursor_snapshot = next(
-        snapshot
-        for snapshot in (
-            _history_snapshot(url) for url in history_requests
-        )
-        if snapshot is not None
-    )
-
     moved_entry = page.locator(f"#entry-{moving_entry['id']}")
     expect(moved_entry).to_be_visible()
     moved_entry.evaluate("element => element.scrollIntoView({block: 'start'})")
@@ -403,7 +393,6 @@ def test_entry_time_change_finds_the_active_entry_on_a_dense_target_date(
         if snapshot is not None
     }
     assert len(rebuilt_snapshots) == 1
-    assert old_cursor_snapshot not in rebuilt_snapshots
 
     page.get_by_role("button", name="Load newer Entries").click()
     expect(page.locator("article.diary-entry")).to_have_count(80)
@@ -439,8 +428,8 @@ def test_entry_time_change_finds_the_active_entry_on_a_dense_target_date(
     page.get_by_role("button", name="Calendar").click()
     expect(page.get_by_role("heading", name="Calendar", exact=True)).to_be_visible()
     page.get_by_role("button", name="Next month").click()
-    reading_date_label = (
-        f"{dates[2].strftime('%B')} {dates[2].day}, {dates[2].year}"
+    anchor_date_label = (
+        f"{dates[1].strftime('%B')} {dates[1].day}, {dates[1].year}"
     )
     dense_date_label = (
         f"{dates[3].strftime('%B')} {dates[3].day}, {dates[3].year}"
@@ -449,8 +438,8 @@ def test_entry_time_change_finds_the_active_entry_on_a_dense_target_date(
         page.get_by_role(
             "button",
             name=(
-                f"{reading_date_label}, "
-                f"{baseline_counts.get(reading_date, 0) + 19} Entries"
+                f"{anchor_date_label}, "
+                f"{baseline_counts.get(anchor_date, 0) + 19} Entries"
             ),
         )
     ).to_be_visible()

@@ -614,3 +614,68 @@ unique blocking defects and five axis-specific blocking findings.
   session is required. Ticket 09 remains blocked. The next allowed session is
   only that Ticket 08 fix/TDD session, followed later by another fresh
   fixed-range review; Ticket 09 must not begin in this review session.
+
+### 2026-08-09 - Latest blocking review findings fixed; fresh review required
+
+#### TDD red and green evidence
+
+- Active Entry red used the real local Supabase, PostgreSQL RLS, PostgREST,
+  FastAPI, Uvicorn and mobile Chromium seam. Starting with exactly the initial
+  20 rendered Entries, moving that visible Entry behind 40 Entries on its
+  destination date left only 20 rendered Entries instead of the required
+  rebuilt 60-Entry window, proving the rank-41 anchor was not found.
+- Stale-root red delayed a pre-mutation Taipei-midnight cursorless response.
+  Releasing it after both a successful rebuild and a failed rebuild recovery
+  replaced the committed `2026-07-29` Entry with the old snapshot in both
+  Chromium cases.
+- Calendar red first forced a committed Entry Time change into fresh-snapshot
+  recovery, selected another Calendar date, and observed that the obsolete
+  `Refresh History` action still had count one on the new date.
+- The three exact async ownership regressions then passed `3 passed`; the
+  corrected real-system initial-20/rank-41 journey passed `1 passed`.
+- The existing recovery journey now also places its active Entry at rank 41,
+  finds it on the bounded third page, restores a 60-Entry reading window and
+  preserves fresh newer and older cursors. The complete History and Calendar
+  Chromium specs passed `13 passed`, and both real-system Entry Time window
+  journeys passed `2 passed`.
+
+#### Blocking fixes and preserved scope
+
+- Active-Entry search now has a fixed five-page budget of 20 Entries per page,
+  independent of lifetime Entry count and previously loaded count. Ordinary
+  window reconstruction is capped at 60 Entries; a deeper active anchor can
+  use only the remaining fixed search pages. Save rebuild and `Refresh
+  History` recovery call the same bounded function and keep one new snapshot,
+  the reading anchor, and the resulting newer and older cursors.
+- Initial refresh, Taipei-midnight refresh, Calendar jump, adjacent loading,
+  Entry Time rebuild and recovery now share one History generation and one
+  abort owner. Every new workflow retires the previous controller, and every
+  response proves current controller and generation ownership before changing
+  Entries, cursors, errors or recovery state. A delayed old cursorless response
+  can no longer reinstall an old snapshot after a committed mutation.
+- Calendar navigation explicitly retires and clears old-date History recovery
+  before loading the newly selected date, so the old recovery action cannot
+  replace the new URL, History window or cursors.
+- Personal Website implementation commit:
+  `774787b16b0da864100080ecd5d11a59932be6cf`. Diary CI pins that exact
+  frontend commit. Neither repository was pushed in this session.
+- Entry Time remains metadata-only. Capture time, Entry Revisions, Original
+  Content, AI processing obligations, Asia/Taipei regrouping and counts,
+  microsecond/UUID ordering, exact-once snapshots, Python-safe ranges, owner
+  authorization, RLS and invalid-request atomic rollback were not weakened.
+- No Ticket 09, Trash, deletion, AI Draft, Queue, RAG, Agent, non-blocking
+  duplicate cleanup or broad `EntryExperience` architecture refactor was
+  started. No code review ran in this implementation session.
+
+#### Full verification
+
+- Personal Website: `npm.cmd run typecheck` passed; the complete four-spec
+  Playwright suite passed all `26` Chromium tests with four workers;
+  `npm.cmd run build` and `npm.cmd run verify:build` passed.
+- Diary: `python -m mypy src tests` passed; the complete
+  `python -m pytest -q` suite reset and migrated real local Supabase and passed
+  `80 passed` with the existing single Starlette/httpx deprecation warning.
+- No new Supabase, Azure, GitHub or frontend environment variable is required.
+  Ticket 08 remains `ready-for-agent` until a new fixed-range code-review
+  session reviews the original Ticket 08 bases through the new repository
+  Heads. Ticket 09 remains blocked and unstarted.
