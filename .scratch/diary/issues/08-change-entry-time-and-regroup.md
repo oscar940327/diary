@@ -679,3 +679,163 @@ unique blocking defects and five axis-specific blocking findings.
   Ticket 08 remains `ready-for-agent` until a new fixed-range code-review
   session reviews the original Ticket 08 bases through the new repository
   Heads. Ticket 09 remains blocked and unstarted.
+
+### 2026-08-09 - Fresh complete fixed-range code review requires changes
+
+#### Verdicts and reviewed ranges
+
+- Standards verdict: **CHANGES-REQUIRED**. Two blocking correctness/lifecycle
+  findings were found. There was no separate documented-style violation; two
+  Fowler smell judgements are non-blocking.
+- Spec verdict: **CHANGES-REQUIRED**. Two blocking correctness findings and one
+  non-blocking scope-drift finding were found.
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**. There are three unique
+  blocking defects; the midnight lifecycle defect appears independently under
+  both axes.
+- Diary fixed range:
+  `898a6056068ce282e36399d568ea6350bb413f29...a9ca31125c18177c246799e413e9032542258ca8`
+  (seven commits).
+- Personal Website fixed range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...774787b16b0da864100080ecd5d11a59932be6cf`
+  (five commits).
+- Both independent reviewers and the primary reviewer inspected the complete
+  ranges, including the original implementation and every blocker-fix commit,
+  rather than only the latest fixes. Passing tests were treated as evidence,
+  not as a substitute for code inspection.
+
+#### Blocking Standards findings
+
+1. **High - the accepted UTC maximum can create a Python-unreadable Taipei
+   date.** Diary
+   `supabase/migrations/20260804130000_restrict_entry_time_to_python_utc_range.sql:48-50,95`,
+   `supabase/migrations/20260805120000_harden_create_entry_time_range.sql:1-5,70-72,137,189`,
+   `src/diary_api/app.py:54-68` and `src/diary_api/entries.py:23-32` accept
+   `9999-12-31T23:59:59.999999Z` as Python-safe UTC. Both Create and Change
+   then derive `(entry_at at time zone 'Asia/Taipei')::date`, which is
+   PostgreSQL date `10000-01-01`. The transaction commits, but Pydantic cannot
+   parse that value into `EntryRecord.owner_date: date`; FastAPI returns `503`
+   and detail, History and Calendar cannot read the committed Entry. The
+   current tests cover `9999...-14:00` normalization overflow and PostgreSQL
+   year 10000, not this valid UTC value whose owner date overflows. Enforce one
+   Taipei-grouping-safe range in FastAPI, the table constraint, Create RPC and
+   Change RPC (the current fixed-zone upper instant is
+   `9999-12-31T15:59:59.999999Z`), and add exact-boundary Create/Change
+   rollback and readback coverage.
+2. **Medium - Taipei-midnight root takeover permanently strands adjacent-load
+   UI ownership.** Personal Website
+   `src/diary/EntryExperience.tsx:410-420,468-504,594-639,561-565,1162-1170,1235-1243`.
+   Start a delayed newer/older load just before Taipei midnight. The timer's
+   cursorless root refresh aborts and replaces that request's generation. The
+   stale adjacent catch returns, its `finally` cannot clear `adjacentLoad`
+   because it no longer owns the generation, and the root success/failure path
+   does not clear it either. Fresh Entries and cursors may install, but both
+   pagination controls remain disabled and the IntersectionObserver refuses
+   further loads until an unrelated navigation or mutation resets state.
+   Retire transport ownership and its operation-specific loading/anchor state
+   together without allowing a stale `finally` to clear a newer owner, and add
+   delayed-adjacent-at-midnight success/failure regressions.
+
+#### Blocking Spec findings
+
+1. **High - bounded rebuild searches the reading Entry instead of requiring
+   the changed active Entry.** Ticket 08 requires the initial-20/rank-41 search
+   to find the active moved Entry and then preserve the reading anchor, window,
+   snapshot and cursors. Personal Website
+   `src/diary/EntryExperience.tsx:156-225,244-258,781-786,818-845` captures the
+   first visible card and prefers that unrelated `readingEntry.id` over
+   `changed.id` as the sole rebuild anchor. With card A first-visible, edit the
+   visible card B below it and move B behind 40 destination Entries. The first
+   fresh page can already contain A and the target count, so rebuild reports
+   success without searching for committed B; B disappears from the installed
+   History window and recovery records the same wrong anchor. The real rank-41
+   regression masks this by scrolling the moved card itself to the top before
+   opening the editor
+   (`tests/system/test_owner_browser_authentication.py:351-380`). Make the
+   changed Entry identity mandatory in the fixed bounded search while
+   separately preserving the reading anchor/window, and cover save plus
+   recovery when the first-visible card differs from the moved card.
+2. **Medium - Taipei-midnight root takeover can wedge bidirectional History.**
+   This independently violates the explicit initial/midnight/adjacent shared
+   generation-and-abort contract and the incremental bidirectional History
+   requirement. The reproduction, impact and fix are the same as Standards
+   finding 2. Existing delayed-root tests cover old root response versus Entry
+   Time mutation success/recovery, not root takeover of an adjacent request.
+
+#### Non-blocking findings and scope audit
+
+- **Low - Duplicated Code (judgement only).** Personal Website
+  `src/diary/EntryExperience.tsx:854-859,927-933` repeats the rebuilt History
+  installation sequence. A small helper could reduce lifecycle drift, but this
+  is not blocking Ticket 08 work.
+- **Low - possible Divergent Change (judgement only).** Personal Website
+  `src/diary/EntryExperience.tsx:153-235,338-945,1078-1096` still combines
+  timestamp ordering, pagination/recovery ownership, Entry Time mutation and
+  navigation. A large `EntryExperience` refactor remains explicitly outside
+  this review.
+- **Low - unrelated scope drift.** Personal Website `index.html:132`, commit
+  `18dc585`, adds a Note Garden homepage link. It is not Ticket 08 or Ticket 09
+  behavior and is not a secret, but it is unrelated work inside the fixed
+  Ticket 08 range; split it from this ticket or record separate authorization.
+- No Ticket 09 Trash, delete, permanent-delete, AI Draft generation, Queue,
+  RAG or Agent implementation was found. A redacted added-line scan found no
+  secret-like credential addition in either range, and no environment variable
+  was added. No unrelated existing-site refactor was found beyond the Note
+  Garden link above.
+
+#### Preflight and exact-SHA Actions evidence
+
+- Both worktrees were clean at review start on `main`. Local `HEAD`, local
+  `origin/main`, and GitHub's remote `main` all exactly matched the requested
+  Heads: Diary `a9ca31125c18177c246799e413e9032542258ca8`; Personal Website
+  `774787b16b0da864100080ecd5d11a59932be6cf`.
+- Both bases and Heads resolved. `git merge-base` exactly equalled each
+  requested base, both ranges were non-empty (seven Diary commits and five
+  Website commits), and both complete three-dot `git diff --check` commands
+  returned zero.
+- Diary `Backend checks` run
+  [31271905570](https://github.com/oscar940327/diary/actions/runs/31271905570)
+  matched the exact Head and was `completed/success`; its sole `test` job was
+  also `completed/success`.
+- Personal Website `Website checks and Pages` run
+  [31271716205](https://github.com/oscar940327/my-personal-website/actions/runs/31271716205)
+  and `pages build and deployment` run
+  [31271715759](https://github.com/oscar940327/my-personal-website/actions/runs/31271715759)
+  matched the exact Head and were `completed/success`. All five returned jobs
+  (`build`, `deploy`, `build`, `deploy`, `report-build-status`) were
+  `completed/success`.
+
+#### Local verification
+
+- Diary `python -m mypy src tests` passed with no issue.
+- Diary unit files `tests/test_health.py tests/test_auth.py` passed `19 passed`
+  with the existing Starlette/httpx deprecation warning.
+- The complete Diary pytest attempt passed the locally runnable tests but all
+  60 real-system cases stopped in session-fixture setup. The sandboxed attempt
+  hit Supabase CLI/Bun `EPERM`; the approved non-sandbox retry established the
+  external cause: Docker Desktop's Linux engine was not running. No affected
+  case reached a product assertion, so this is an environment limitation, not
+  a product-test failure or a local full-suite pass. Exact-SHA Actions above
+  remain green.
+- Personal Website `npm.cmd run typecheck` passed.
+- The two complete History/Calendar Playwright specs displayed all `13` cases
+  as `ok` with four workers, including rank 41, both delayed-root outcomes,
+  Calendar recovery retirement and bounded recovery. The Playwright process
+  did not return after the reusable Vite server teardown and was stopped by the
+  outer 180-second timeout, so it is recorded as `13 cases ok`, not an exit-code
+  pass. No workers, assertions, retries or serial mode were changed in range.
+- Personal Website `npm.cmd run build` and `npm.cmd run verify:build` passed;
+  the existing non-module script warnings remained informational.
+- A direct Pydantic probe rejected `10000-01-01` as a Python `date`, confirming
+  the application-side half of Standards finding 1. A 200,000-pair UUID probe
+  found no disagreement between the frontend equal-time comparator and raw
+  canonical UUID lexical order; this does not mitigate the blockers above.
+
+#### Review boundary and next step
+
+- This review changed only this Ticket 08 documentation. It did not modify
+  product code, tests, migrations, CI, or the Personal Website implementation;
+  it did not push, create a PR, or start Ticket 09.
+- Ticket 08 **cannot close** and is not ready to prepare Ticket 09. It remains
+  `ready-for-agent` for a separate fix/TDD session addressing the three unique
+  blockers, followed by another fresh complete fixed-range review over the
+  same original bases and new exact Heads.
