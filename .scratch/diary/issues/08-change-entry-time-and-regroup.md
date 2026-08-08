@@ -964,3 +964,200 @@ unique blocking defects and five axis-specific blocking findings.
   `ready-for-agent`; the next allowed step is a new independent complete
   fixed-range review from the original Ticket 08 bases through the new exact
   repository Heads. Ticket 09 remains blocked and must not begin.
+
+### 2026-08-09 - Independent complete fixed-range review still requires changes
+
+#### Verdicts and exact reviewed ranges
+
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**. Ticket 08 remains
+  `ready-for-agent`; Ticket 09 remains blocked.
+- Standards axis: **CHANGES-REQUIRED**, with two blocking findings, one
+  non-blocking workflow finding and two non-blocking Fowler smell judgements.
+- Spec axis: **CHANGES-REQUIRED**, with two blocking findings and one
+  non-blocking scope-drift finding. The newer-direction rebuild defect appears
+  independently under both axes.
+- Primary validation found one additional blocking regression-test defect.
+  There are four unique blockers in total: three product/migration defects and
+  one test-reliability defect.
+- Diary fixed range:
+  `898a6056068ce282e36399d568ea6350bb413f29...b8d719fddb73d7088a918453b12e4242ce7fbb7e`
+  (nine commits).
+- Personal Website fixed range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...ee25f7e0b03a21aaa78b587f2aa19c69b9cdd767`
+  (six commits).
+- Both independent axes and the primary reviewer inspected the complete fixed
+  ranges, including the original implementation, every earlier review record
+  and every blocker-fix commit. Prior implementation claims and green CI were
+  treated as evidence, not as a review PASS.
+
+#### Blocking findings
+
+1. **High - latest Taipei-safe CHECK is not an upgrade-safe expand step.**
+   Diary
+   `supabase/migrations/20260809120000_enforce_taipei_safe_entry_time_range.sql:1-6`
+   immediately validates the new narrower table constraint. The immediately
+   preceding released contract in
+   `20260805120000_harden_create_entry_time_range.sql:1-6,70-76` and the prior
+   FastAPI accepted UTC instants through
+   `9999-12-31T23:59:59.999999Z`. If even one such previously valid row exists,
+   applying `20260809120000` fails before its RPC replacements run, blocking
+   the ordered production migration. A transaction-scoped local reproduction
+   removed only the new constraint, set one existing Entry to that prior-valid
+   instant and attempted the exact new CHECK; PostgreSQL returned
+   `check constraint ... is violated by some row`. The aborted transaction
+   restored the constraint and left zero out-of-range rows. A clean `db reset`
+   cannot detect this upgrade-over-existing-data case. This violates ADR 0013
+   and the Ticket requirement for an ordered expand-contract migration and a
+   usable immediately previous revision. The migration needs an explicit
+   compatible validation/remediation sequence; this review did not implement
+   one.
+2. **High - bounded active-Entry rebuild can spend its entire budget in the
+   wrong direction.** Personal Website
+   `src/diary/EntryExperience.tsx:181-218,837-855,915-955` always follows
+   `olderCursor` while it exists and consults `newerCursor` only after the older
+   side is exhausted. Reproduce with reading card A on date D, editable card B
+   below it, both cursors present and at least 80 older Entries; move B to D+1.
+   The fresh page anchored on A excludes committed B but exposes it through the
+   newer cursor. All four remaining requests go older, the five-page bound is
+   exhausted, save enters recovery and every `Refresh History` repeats the
+   same deterministic failure with cursors cleared. The committed active Entry
+   never regains a successful fresh window. The real rank-41 regression
+   `tests/system/test_owner_browser_authentication.py:259-435` covers only B
+   moving to an older dense date. This violates cross-date regrouping, the
+   mandatory `changed.id` search and shared bounded save/recovery behavior.
+3. **Medium - Taipei-midnight root takeover can orphan a committed Entry Time
+   rebuild.** Personal Website
+   `src/diary/EntryExperience.tsx:410-427,478-515,848-911`. After the mutation
+   commits and save starts its fresh rebuild, let the midnight timer start a
+   root refresh. `beginHistoryRequest` aborts and supersedes the rebuild. The
+   save catch no longer owns the generation, so it executes neither its
+   successful-install path nor its committed-recovery path: the editor can
+   remain open, Calendar invalidation is skipped and a root failure leaves no
+   mutation-specific recovery. Existing tests cover adjacent request -> root
+   takeover and old root -> mutation takeover, not root takeover after the
+   committed rebuild has begun. This violates the required complete and
+   consistent generation/abort ownership across root refresh, Entry Time
+   rebuild and recovery.
+4. **Medium - both new midnight regressions expire their owner session while
+   advancing the clock.** Personal Website
+   `tests/e2e/continuous-history.spec.ts:727-738,898-932` gives the synthetic
+   session exactly 3,600 seconds of remaining lifetime and then advances the
+   page clock by 3,601 seconds. In the required complete four-worker local run,
+   both new cases returned to `Sign in to Diary`: the success case could not
+   find the fresh root Entry, and the failure case repeatedly lost the
+   `Retry History` button as the DOM was replaced. The result was `26 passed,
+   2 failed`; the Vite server also recorded an unhandled History proxy attempt.
+   The test therefore races authentication expiry instead of reliably proving
+   blocker 3. No timeout, retry, serial mode, worker reduction or assertion
+   weakening was used in this review.
+
+#### Non-blocking findings
+
+- **Low - unrelated scope drift.** Personal Website `index.html:132` adds the
+  Note Garden homepage link inside the Ticket 08 range. It is not Ticket 08 or
+  Ticket 09 behavior. This review preserved it exactly as instructed and did
+  not request its removal.
+- **Low - judgement-only smells.** Personal Website
+  `src/diary/EntryExperience.tsx:864-875,938-944` duplicates fresh-window
+  installation, and the component continues to combine timestamp ordering,
+  pagination ownership, mutation/recovery and navigation concerns. These are
+  non-blocking Fowler judgements; no duplicated-code cleanup or broad
+  architecture refactor is authorized by this review.
+
+#### Blocker and invariant audit
+
+- Blocker 1's current-state range is consistent across FastAPI, the table
+  constraint and Create/Change RPCs at
+  `0001-01-01T00:00:00Z` through
+  `9999-12-31T15:59:59.999999Z`. Exact boundaries read through detail,
+  History and Calendar, while `9999-12-31T23:59:59.999999Z`, offsetless input,
+  normalization overflow and PostgreSQL year 10000 are rejected before
+  mutation. Create/Change invalid-input checks preserve Entry, Revision, AI
+  obligation, History position, idempotency and metadata state. Named
+  PostgREST arguments, permissions/security modes and return columns remain
+  compatible in the fresh schema. **The upgrade-over-existing-data and ADR
+  0013 conclusion fails because of finding 1.**
+- Blocker 2's older-direction initial-20/rank-41 path passed the real seam: it
+  requested a third page, found B exactly once, preserved A within eight
+  pixels, used one new snapshot and fresh continuation cursors, stayed within
+  the fixed 100-Entry search bound and below the 140-Entry lifetime, shared
+  save/recovery behavior and failed closed when absent. **Bidirectional active
+  search fails for a newer move because of finding 2.**
+- Blocker 3's delayed adjacent -> midnight ownership code retires adjacent
+  loading and pending anchor state, guards stale `finally`, clears old cursors
+  and exposes retry after root failure. **The required regression is not
+  reliable because of finding 4, and the reverse root -> committed rebuild
+  takeover remains broken because of finding 3.**
+- Entry Time remains metadata-only; immutable Entry capture time, Entry
+  Revision rows/content/timestamps and AI processing obligations are unchanged
+  by successful time changes. Asia/Taipei grouping/counts, microsecond plus UUID
+  order, History membership/time-position exact-once behavior, owner FastAPI
+  authorization, PostgreSQL RLS, invalid-request rollback and direct metadata
+  PATCH denial passed the inspected code and real-system tests.
+- Existing Create, Original Content edit and historical restore behavior passed
+  the full suite. No old snapshot cursor is installed after the covered save,
+  recovery, Calendar and adjacent takeover cases; the uncovered cases above
+  prevent a general invariant PASS.
+
+#### Local verification
+
+- Docker Desktop Linux engine was available (`linux`, server 29.6.2), and
+  Supabase CLI 2.109.1 was available through the project toolchain.
+- Ordered `npx.cmd supabase db reset` passed and applied all migrations through
+  `20260809120000_enforce_taipei_safe_entry_time_range.sql` on a clean local
+  database.
+- `python -m mypy src tests` passed with no issue.
+- The Ticket 04-08 History, Calendar, Revision, Entry Time and three real
+  mobile Chromium journeys passed `40 passed in 56.29s` in repository order.
+  An initial alternate file order reproduced the already documented shared
+  fixture contamination (`39 passed, 1 failed`): earlier 2099 rows invalidated
+  a Calendar test's pre-existing 2090-last-Entry assumption.
+- Complete `python -m pytest -q` passed `81 passed` with one existing
+  Starlette/httpx deprecation warning. This exercised real local Supabase,
+  PostgreSQL RLS, PostgREST, FastAPI, Uvicorn and mobile Chromium.
+- Personal Website `npm.cmd run typecheck`, `npm.cmd run build` and
+  `npm.cmd run verify:build` passed. Build emitted only the existing
+  informational non-module-script warnings.
+- The complete `npm.cmd run test:e2e -- --workers=4` ran all 28 Chromium tests
+  with exactly four workers and failed `26 passed, 2 failed` for finding 4.
+  Output was directed to a new review-only directory because the known old
+  Playwright result directories are ACL-denied; the new directory was removed
+  afterward and none of the ignored artifacts was added to Git.
+
+#### Exact implementation-SHA GitHub Actions evidence
+
+- Personal Website `Website checks and Pages` run
+  [31275576912](https://github.com/oscar940327/my-personal-website/actions/runs/31275576912)
+  matched `ee25f7e0b03a21aaa78b587f2aa19c69b9cdd767` and was
+  `completed/success`; jobs `build` and `deploy` were both
+  `completed/success`.
+- Personal Website `pages build and deployment` run
+  [31275576701](https://github.com/oscar940327/my-personal-website/actions/runs/31275576701)
+  matched the same exact SHA and was `completed/success`; jobs `build`,
+  `deploy` and `report-build-status` were all `completed/success`.
+- Diary `Backend checks` run
+  [31275722246](https://github.com/oscar940327/diary/actions/runs/31275722246)
+  matched `b8d719fddb73d7088a918453b12e4242ce7fbb7e` and was
+  `completed/success`; its `test` job was `completed/success`.
+- The green implementation-SHA runs do not cover findings 1-3, and local
+  no-retry four-worker execution exposed finding 4, so CI does not establish a
+  fixed-range review PASS.
+
+#### Scope, residual risk and next step
+
+- No product code, test, migration or CI file was modified in this review.
+  Only this Ticket 08 review record changed. No finding was fixed.
+- No secret or environment variable was added. Added-line inspection found
+  only existing publishable-key/access-token plumbing and synthetic test
+  tokens, not credential literals.
+- No Ticket 09, Trash/delete/permanent-delete, AI Draft, Queue, RAG or Agent
+  implementation was found or started. The Note Garden link was not modified.
+  No large refactor was performed.
+- Residual coverage gaps are the exact reproductions in findings 1-3: upgrade
+  with a preceding-valid late-year row, active Entry moved newer than the
+  reading anchor while both cursors exist, and midnight root takeover after a
+  committed rebuild starts. The latest midnight tests additionally require a
+  non-expiring synthetic session before they can provide stable evidence.
+- Ticket 08 is **not PASS** and remains `ready-for-agent`. The next allowed work
+  is a separate Ticket 08 fix/TDD session for these blockers, followed by a new
+  independent complete fixed-range review. Do not start Ticket 09.
