@@ -839,3 +839,128 @@ unique blocking defects and five axis-specific blocking findings.
   `ready-for-agent` for a separate fix/TDD session addressing the three unique
   blockers, followed by another fresh complete fixed-range review over the
   same original bases and new exact Heads.
+
+### 2026-08-09 - Latest three blockers fixed; fresh review required
+
+#### Independent session preflight
+
+- The latest review record was preserved in an independent docs commit
+  `0ebb90d08af18b5afbd26520baade43204b54ddb` before product work began.
+  Its exact-SHA `Backend checks` run
+  [31273774751](https://github.com/oscar940327/diary/actions/runs/31273774751)
+  and `test` job completed successfully.
+- Both repositories began on `main`; each local Head and `origin/main`
+  matched the requested implementation Head. Personal Website had no tracked
+  change. Diary had only the expected uncommitted review record, whose diff
+  contained the complete latest review and no overwritten prior evidence.
+- Docker Desktop's Linux engine was started and confirmed as `linux`. Existing
+  ACL-denied Playwright result directories were not added to Git and no
+  product code was changed to clean them.
+
+#### Blocker 1 - Taipei-safe Entry Time range
+
+- FastAPI red reached real Uvicorn, PostgREST, PostgreSQL RLS and Supabase:
+  Change with `9999-12-31T23:59:59.999999Z` returned `503` instead of `422`
+  after the database returned owner date `10000-01-01`. Direct owner-token
+  Change and Create RPC calls both returned `200` and wrote the same unreadable
+  owner date.
+- The root cause was a UTC/Python-year upper bound that did not account for
+  the fixed `Asia/Taipei` grouping conversion. The shared FastAPI validator,
+  controlled Create RPC, controlled Change RPC and new table constraint now
+  use `0001-01-01T00:00:00Z` through
+  `9999-12-31T15:59:59.999999Z`, inclusive. Offset-required parsing and UTC
+  normalization remain unchanged and validation precedes mutation.
+- Ordered migration
+  `20260809120000_enforce_taipei_safe_entry_time_range.sql` adds the
+  `entries_entry_at_taipei_grouping_safe_range` constraint without editing or
+  removing the preceding broad constraint. It replaces the two controlled RPC
+  implementations with the same named arguments, security/RLS modes and
+  return columns. The immediately previous FastAPI store contract continued
+  to call both RPCs successfully, preserving ADR 0013 compatibility.
+- Green evidence was `4 passed` across the focused real FastAPI/direct-RPC
+  cases. Invalid Create and Change left Entries, Entry Revisions, AI processing
+  obligations, History positions, idempotency metadata and Entry metadata
+  byte-for-byte unchanged. The exact upper and lower boundaries were accepted
+  and read through detail, History and Calendar with owner dates
+  `9999-12-31` and `0001-01-01`; immutable capture time, Revisions and AI
+  obligations remained unchanged.
+
+#### Blocker 2 - active Entry and reading anchor are separate
+
+- Mocked Chromium recovery red installed only `20` Entries instead of `60`:
+  page one contained reading card A and met the target count, while changed
+  card B appeared only on the bounded third page. The real mobile Chromium red
+  used Supabase, PostgreSQL RLS, PostgREST, FastAPI and Uvicorn; after the
+  committed mutation, B disappeared while A and the old date window remained.
+- The root cause was the single rebuild identifier preferring A over B.
+  `HistoryRecovery` now stores `activeEntryId = changed.id` independently from
+  the reading anchor. Save rebuild and `Refresh History` recovery still share
+  one bounded function; its loop and fail-closed condition require the active
+  Entry, while A independently selects and restores the reading viewport.
+- Mocked failed-rebuild recovery passed `1 passed`. The real initial-20 mobile
+  journey passed `1 passed`, requested at least the bounded third page, found B
+  exactly once, preserved A within the existing 8-pixel tolerance, used only
+  one new snapshot, continued through fresh newer/older cursors, and kept the
+  explicit rebuilt bound at no more than 100 Entries and below the 140-Entry
+  lifetime fixture.
+
+#### Blocker 3 - midnight root takeover retires adjacent state
+
+- Clock-controlled red reproduced both outcomes. After delayed Load older and
+  a successful Taipei-midnight root, `Loading older Entries` remained forever.
+  After delayed Load newer and a failed root, there was no retryable History
+  control. Neither failure used a larger timeout, retry, serial mode, reduced
+  worker count or removed assertion.
+- Root cause was transport-only retirement: the old controller/generation was
+  aborted, but its `adjacentLoad`, pending reading anchor and related operation
+  state stayed owned by nobody. `beginHistoryRequest` now retires those states
+  together. A root request retires old cursors before loading; success installs
+  fresh cursors, failure enters `unavailable` with `Retry History`, and a
+  committed Entry Time recovery explicitly retires a superseded root's
+  loading state. Stale `finally` blocks still require matching controller and
+  generation, so they cannot clear newer state.
+- The two new midnight cases passed `2 passed`; the complete delayed lifecycle
+  set passed `4 passed`. Stale adjacent responses were released or aborted,
+  never installed, no loading label remained, retry/root success restored
+  enabled manual pagination with fresh cursors, and no old cursor was requested
+  after takeover.
+
+#### Complete local verification
+
+- Personal Website `npm.cmd run typecheck` passed. The complete suite retained
+  all prior 26 Chromium cases and added the two midnight regressions; all `28`
+  passed with exactly four workers. `npm.cmd run build` and
+  `npm.cmd run verify:build` passed with only the existing informational Vite
+  non-module-script warnings.
+- Ordered Supabase `db reset` applied every migration through
+  `20260809120000_enforce_taipei_safe_entry_time_range.sql`. `python -m mypy
+  src tests` passed. The Ticket 04-08 Calendar, History, Revision, Entry Time
+  and real mobile set passed `40 passed`. Complete `python -m pytest -q`
+  passed `81 passed` with the existing single Starlette/httpx deprecation
+  warning.
+- Personal Website commit
+  `ee25f7e0b03a21aaa78b587f2aa19c69b9cdd767` was pushed first. Its exact-SHA
+  `Website checks and Pages` run
+  [31275576912](https://github.com/oscar940327/my-personal-website/actions/runs/31275576912)
+  and `pages build and deployment` run
+  [31275576701](https://github.com/oscar940327/my-personal-website/actions/runs/31275576701)
+  were both `completed/success`. All five jobs (`build`, `deploy`, `build`,
+  `deploy`, `report-build-status`) were also `completed/success` before Diary
+  pinned that exact Website SHA.
+
+#### Scope and review handoff
+
+- Entry Time remains metadata-only. Immutable capture time, Entry Revisions,
+  AI obligations, Asia/Taipei regrouping and Calendar counts,
+  microsecond/UUID ordering, History snapshot exact-once, owner authorization,
+  PostgreSQL RLS, invalid-request rollback and existing Create/edit/restore
+  behavior remain covered and green.
+- No secret or environment variable was added. Ticket 09, Trash, delete,
+  permanent delete, AI Draft, Queue, RAG and Agent work were not started. The
+  Note Garden link and unrelated site pages were not modified. No broad
+  `EntryExperience` refactor or non-blocking duplicated-code cleanup occurred.
+- This blocker-fix/TDD session did not execute code review, does not claim
+  Ticket 08 review passed, and did not create a PR. Ticket 08 remains
+  `ready-for-agent`; the next allowed step is a new independent complete
+  fixed-range review from the original Ticket 08 bases through the new exact
+  repository Heads. Ticket 09 remains blocked and must not begin.

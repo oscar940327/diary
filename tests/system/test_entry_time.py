@@ -582,8 +582,34 @@ def test_fastapi_rejects_utc_normalization_overflow_without_partial_change(
         owner_access_token,
         original["id"],
     )
+    table_selections = {
+        "entries": (
+            "id,owner_id,entry_at,idempotency_key,current_revision_id,"
+            "created_at,updated_at,trashed_at"
+        ),
+        "entry_revisions": (
+            "id,entry_id,revision_number,original_content,created_at"
+        ),
+        "ai_processing": (
+            "id,entry_revision_id,state,draft_required,embedding_required,"
+            "attempt_count,created_at,updated_at,stale_at"
+        ),
+        "entry_history_positions": (
+            "entry_id,entry_at,valid_from_xid,valid_until_xid"
+        ),
+    }
+    rows_before = {
+        table: _table_rows(
+            local_supabase,
+            owner_access_token,
+            table,
+            select,
+        )
+        for table, select in table_selections.items()
+    }
 
     for body in (
+        {"entry_at": "9999-12-31T23:59:59.999999Z"},
         {"entry_at": "9999-12-31T23:59:59.999999-14:00"},
         {"entry_at": "0001-01-01T00:00:00+14:00"},
         {"entry_at": "10000-01-01T00:00:00+00:00"},
@@ -597,6 +623,19 @@ def test_fastapi_rejects_utc_normalization_overflow_without_partial_change(
             json=body,
         )
         assert response.status_code == 422, response.text
+
+    create_response = httpx.post(
+        f"{diary_api}/entries",
+        headers={
+            **_owner_headers(owner_access_token),
+            "X-Idempotency-Key": "taipei-unsafe-fastapi-create",
+        },
+        json={
+            "entry_at": "9999-12-31T23:59:59.999999Z",
+            "original_content": "This Create must not write any row.",
+        },
+    )
+    assert create_response.status_code == 422, create_response.text
 
     detail_response = httpx.get(
         f"{diary_api}/entries/{original['id']}",
@@ -619,6 +658,15 @@ def test_fastapi_rejects_utc_normalization_overflow_without_partial_change(
         owner_access_token,
         original["id"],
     ) == positions_before
+    assert {
+        table: _table_rows(
+            local_supabase,
+            owner_access_token,
+            table,
+            select,
+        )
+        for table, select in table_selections.items()
+    } == rows_before
 
 
 def test_direct_rpc_rejects_python_unsafe_timestamps_without_partial_change(
@@ -648,11 +696,24 @@ def test_direct_rpc_rejects_python_unsafe_timestamps_without_partial_change(
         owner_access_token,
         original["id"],
     )
+    entry_rows_before = _table_rows(
+        local_supabase,
+        owner_access_token,
+        "entries",
+        (
+            "id,owner_id,entry_at,idempotency_key,current_revision_id,"
+            "created_at,updated_at,trashed_at"
+        ),
+    )
     endpoint = (
         f"{local_supabase.api_url}/rest/v1/rpc/change_diary_entry_time"
     )
 
     for body in (
+        {
+            "p_entry_id": original["id"],
+            "p_entry_at": "9999-12-31T23:59:59.999999Z",
+        },
         {
             "p_entry_id": original["id"],
             "p_entry_at": "9999-12-31T23:59:59.999999-14:00",
@@ -706,6 +767,15 @@ def test_direct_rpc_rejects_python_unsafe_timestamps_without_partial_change(
         owner_access_token,
         original["id"],
     ) == positions_before
+    assert _table_rows(
+        local_supabase,
+        owner_access_token,
+        "entries",
+        (
+            "id,owner_id,entry_at,idempotency_key,current_revision_id,"
+            "created_at,updated_at,trashed_at"
+        ),
+    ) == entry_rows_before
 
 
 def test_direct_create_rpc_rejects_python_unsafe_timestamps_before_writes(
@@ -716,10 +786,16 @@ def test_direct_create_rpc_rejects_python_unsafe_timestamps_before_writes(
     endpoint = f"{local_supabase.api_url}/rest/v1/rpc/create_diary_entry"
     table_selections = {
         "entries": (
-            "id,entry_at,idempotency_key,current_revision_id,created_at"
+            "id,owner_id,entry_at,idempotency_key,current_revision_id,"
+            "created_at,updated_at,trashed_at"
         ),
-        "entry_revisions": "id,entry_id,original_content,created_at",
-        "ai_processing": "id,entry_revision_id,state,created_at",
+        "entry_revisions": (
+            "id,entry_id,revision_number,original_content,created_at"
+        ),
+        "ai_processing": (
+            "id,entry_revision_id,state,draft_required,embedding_required,"
+            "attempt_count,created_at,updated_at,stale_at"
+        ),
         "entry_history_positions": (
             "entry_id,entry_at,valid_from_xid,valid_until_xid"
         ),
@@ -735,6 +811,7 @@ def test_direct_create_rpc_rejects_python_unsafe_timestamps_before_writes(
     }
     unsafe_timestamps = (
         "10000-01-01T00:00:00+00:00",
+        "9999-12-31T23:59:59.999999Z",
         "9999-12-31T23:59:59.999999-14:00",
         "0001-01-01T00:00:00+14:00",
         "2082-08-21T12:00:00",
@@ -817,6 +894,97 @@ def test_direct_create_rpc_rejects_python_unsafe_timestamps_before_writes(
         },
     )
     assert application_response.status_code == 201, application_response.text
+
+
+def test_taipei_safe_entry_time_boundaries_remain_readable(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    upper = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="The maximum Taipei-safe Entry Time remains readable.",
+        entry_at="9999-12-31T15:59:59.999999Z",
+        idempotency_key="taipei-safe-upper-boundary",
+    )
+    change_target = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="The minimum UTC Entry Time remains readable.",
+        entry_at="2082-08-23T12:00:00+08:00",
+        idempotency_key="taipei-safe-lower-boundary",
+    )
+    revisions_before = _revision_history(
+        diary_api,
+        owner_access_token,
+        change_target["id"],
+    )
+    processing_before = _processing_obligations(
+        local_supabase,
+        owner_access_token,
+        change_target["current_revision_id"],
+    )
+
+    change_response = httpx.put(
+        f"{diary_api}/entries/{change_target['id']}/entry-time",
+        headers=_owner_headers(owner_access_token),
+        json={"entry_at": "0001-01-01T00:00:00Z"},
+    )
+
+    assert change_response.status_code == 200, change_response.text
+    lower = change_response.json()
+    assert upper["owner_date"] == "9999-12-31"
+    assert lower["owner_date"] == "0001-01-01"
+    assert datetime.fromisoformat(cast(str, upper["entry_at"])) == datetime(
+        9999,
+        12,
+        31,
+        15,
+        59,
+        59,
+        999999,
+        tzinfo=timezone.utc,
+    )
+    assert datetime.fromisoformat(lower["entry_at"]) == datetime(
+        1,
+        1,
+        1,
+        tzinfo=timezone.utc,
+    )
+    assert lower["created_at"] == change_target["created_at"]
+
+    for entry in (upper, lower):
+        detail_response = httpx.get(
+            f"{diary_api}/entries/{entry['id']}",
+            headers=_owner_headers(owner_access_token),
+        )
+        assert detail_response.status_code == 200, detail_response.text
+        assert detail_response.json() == entry
+
+        owner_date = cast(str, entry["owner_date"])
+        history = _history_entries(
+            diary_api,
+            owner_access_token,
+            owner_date,
+        )
+        assert [item["id"] for item in history].count(entry["id"]) == 1
+        assert _calendar_counts(
+            diary_api,
+            owner_access_token,
+            owner_date[:7],
+        )[owner_date] == 1
+
+    assert _revision_history(
+        diary_api,
+        owner_access_token,
+        change_target["id"],
+    ) == revisions_before
+    assert _processing_obligations(
+        local_supabase,
+        owner_access_token,
+        change_target["current_revision_id"],
+    ) == processing_before
 
 
 def test_owner_cannot_patch_entry_metadata_outside_controlled_action(

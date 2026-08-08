@@ -330,7 +330,9 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
             )
 
     assert len(seeded_entries) == 140
-    moving_content = f"Dense window {anchor_date} hour 19."
+    reading_content = f"Dense window {anchor_date} hour 19."
+    moving_content = f"Dense window {anchor_date} hour 18."
+    reading_entry = seeded_entries[reading_content]
     moving_entry = seeded_entries[moving_content]
     history_requests: list[str] = []
 
@@ -350,11 +352,13 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
 
     page.goto(f"{diary_application}/diary.html?date={anchor_date}")
     expect(page.locator("article.diary-entry")).to_have_count(20)
+    reading_card = page.locator(f"#entry-{reading_entry['id']}")
     moved_entry = page.locator(f"#entry-{moving_entry['id']}")
+    expect(reading_card).to_be_visible()
     expect(moved_entry).to_be_visible()
-    moved_entry.evaluate("element => element.scrollIntoView({block: 'start'})")
+    reading_card.evaluate("element => element.scrollIntoView({block: 'start'})")
     page.wait_for_timeout(100)
-    top_before = moved_entry.bounding_box()
+    top_before = reading_card.bounding_box()
     assert top_before is not None
 
     moved_entry.get_by_text("Entry actions", exact=True).click()
@@ -373,9 +377,12 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
     ):
         editor.get_by_role("button", name="Save Entry Time").click()
 
+    expect(editor).not_to_be_visible()
     expect(moved_entry).to_be_visible()
-    expect(page.locator("article.diary-entry")).to_have_count(60)
-    top_after = moved_entry.bounding_box()
+    rebuilt_count = page.locator("article.diary-entry").count()
+    assert 60 <= rebuilt_count <= 100
+    assert rebuilt_count < len(seeded_entries)
+    top_after = reading_card.bounding_box()
     assert top_after is not None
     assert abs(top_after["y"] - top_before["y"]) <= 8
     moved_group = moved_entry.locator("xpath=ancestor::section[1]")
@@ -384,7 +391,7 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
     ).to_be_visible()
 
     rebuilt_request_urls = history_requests[post_change_start:]
-    assert len(rebuilt_request_urls) == 3
+    assert 3 <= len(rebuilt_request_urls) <= 5
     rebuilt_snapshots = {
         snapshot
         for snapshot in (
@@ -395,9 +402,13 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
     assert len(rebuilt_snapshots) == 1
 
     page.get_by_role("button", name="Load newer Entries").click()
-    expect(page.locator("article.diary-entry")).to_have_count(80)
+    expect(page.locator("article.diary-entry")).to_have_count(
+        rebuilt_count + 20
+    )
     page.get_by_role("button", name="Load older Entries").click()
-    expect(page.locator("article.diary-entry")).to_have_count(100)
+    expect(page.locator("article.diary-entry")).to_have_count(
+        rebuilt_count + 40
+    )
 
     for content in [
         *(f"Dense target {dense_date} rank {minute:02d}." for minute in range(40)),
@@ -407,12 +418,12 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
     rendered_ids = page.locator("article.diary-entry").evaluate_all(
         "elements => elements.map(element => element.id)"
     )
-    assert len(rendered_ids) == 100
+    assert len(rendered_ids) == rebuilt_count + 40
     assert len(rendered_ids) == len(set(rendered_ids))
     assert len(rendered_ids) < len(seeded_entries)
 
     post_change_request_urls = history_requests[post_change_start:]
-    assert len(post_change_request_urls) == 5
+    assert len(post_change_request_urls) == len(rebuilt_request_urls) + 2
     assert {
         snapshot
         for snapshot in (

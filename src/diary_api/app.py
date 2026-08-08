@@ -51,15 +51,33 @@ class OwnerResponse(TypedDict):
     owner_id: str
 
 
+MIN_ENTRY_TIME_UTC = datetime(1, 1, 1, tzinfo=UTC)
+MAX_ENTRY_TIME_UTC = datetime(
+    9999,
+    12,
+    31,
+    15,
+    59,
+    59,
+    999999,
+    tzinfo=UTC,
+)
+
+
 def normalize_entry_time(value: datetime) -> datetime:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("Entry Time must include a UTC offset")
     try:
-        return value.astimezone(UTC)
+        normalized = value.astimezone(UTC)
     except (OverflowError, ValueError) as error:
         raise ValueError(
             "Entry Time is outside the supported UTC range"
         ) from error
+    if not MIN_ENTRY_TIME_UTC <= normalized <= MAX_ENTRY_TIME_UTC:
+        raise ValueError(
+            "Entry Time is outside the supported Asia/Taipei grouping range"
+        )
+    return normalized
 
 
 NormalizedEntryTime = Annotated[
