@@ -1996,3 +1996,161 @@ checks from establishing a complete Ticket 08 PASS.
   SHA Actions gate succeeded. Ticket 08 remains `ready-for-agent` and Ticket
   09 must not begin. A separate Ticket 08 implementation/TDD session is
   required before another fresh complete fixed-range review.
+
+### 2026-08-10 - Deep reading Entry blocker fixed; fresh review required
+
+#### Session boundary, starting state and preservation gate
+
+- This was a new formal Ticket 08 implementation/TDD session. It did not run
+  code review, does not claim Ticket 08 PASS, did not create a PR and did not
+  start Ticket 09.
+- The complete `implement` and `tdd` skills and required TDD references were
+  read. Preflight also read `AGENTS.md`, development workflow, domain and
+  issue-tracker guidance, `CONTEXT.md`, the complete MVP spec, this complete
+  Ticket 08 record, and ADRs 0001, 0004, 0005, 0013, 0014 and 0015.
+- Diary began on `main` at
+  `118985d5a891b8807be97509ca179557bc78a173`, exactly matching
+  `origin/main`, with only the specified append-only formal review record
+  modified. Personal Website began clean on `main` at
+  `4f47c1d4c36a78f9c49df8885515e3143d34cbb2`, exactly matching
+  `origin/main`.
+- Inspection proved the Diary diff was only the complete EOF append headed
+  `2026-08-10 - Fresh formal complete fixed-range review requires changes`;
+  no prior record was overwritten or removed. It was preserved first in the
+  independent docs-only commit
+  `237e0eac087aabe689ec14d8599f7d7e04221d04` and pushed to Diary `main`.
+- [Backend checks run 31324913118](https://github.com/oscar940327/diary/actions/runs/31324913118)
+  matched that exact docs-only SHA, attempt 1, and was `completed/success`.
+  Its `test` job
+  [93273625555](https://github.com/oscar940327/diary/actions/runs/31324913118/job/93273625555)
+  matched the same SHA and was `completed/success`. Both tracked worktrees
+  were rechecked clean before product work began.
+
+#### Confirmed blocker, public seam and deterministic red
+
+- The confirmed blocker was the formal review's High Spec finding: a deep
+  reading Entry A could disappear from a rebuilt History window after changed
+  Entry B was found. Root cause was not reopened as a broad diagnosis.
+- The pre-agreed seam remained the public Playwright History UI: public Change
+  Entry Time actions, History API requests, rendered Entry cards, viewport
+  position, manual pagination and the existing IntersectionObserver behavior.
+  No private helper or implementation-detail test was added.
+- One new owner journey first used public `Load older Entries` controls to
+  install 80 Entries. A was first-visible at approximately rank 78, B was a
+  distinct Entry immediately below A, and B moved into the fresh newer
+  direction. The fresh root and first two older pages met the ordinary
+  60-Entry target without A; A remained findable only on the fifth and final
+  allowed request.
+- Red command used exactly the new public-seam journey, no retry and a new
+  ignored session output directory. It returned exit code `1`: `1 failed`.
+  Save found B and installed the rebuilt window, but
+  `#entry-deep-reading-a` was owner-visibly absent: expected count `1`,
+  received `0`. Authentication, fixture setup, Vite lifecycle and teardown
+  were healthy; the failure was the intended Entry-presence/viewport defect.
+
+#### Minimal implementation and green evidence
+
+- `HistoryRecovery` now retains `readingEntry` independently from
+  `activeEntry`. A remains the manual viewport owner; B remains the committed
+  mutation owner. The concepts are not substituted for one another.
+- Save and `Refresh History` recovery still call the same
+  `rebuildHistoryWindow`. Its ordinary target remains capped at 60 Entries and
+  its total budget remains exactly five pages: one fresh cursorless root plus
+  at most four requests. The budget does not depend on lifetime or previously
+  loaded count.
+- The shared loop now treats both distinct A and B as mandatory. Direction
+  selection considers every missing mandatory Entry, so it first obtains
+  newer B and then continues older to deep A. The final guard throws unless
+  both are present; therefore no rebuilt window missing A or B can install,
+  and committed failure remains retryable through the existing recovery.
+- The regression exercises both vertical paths in the same test. Save uses
+  exactly five requests and succeeds. A second committed time change forces
+  the first cursorless rebuild to return `503`; `Refresh History` starts
+  another fresh root and uses only that root's `fresh-deep-2-*` cursors,
+  exactly five total requests, and then succeeds. Neither rebuild requests an
+  `old-deep-*` cursor.
+- Both paths render A and B exactly once and preserve A with the unchanged
+  `toBeCloseTo(..., 0)` viewport assertion. Native scroll anchoring is
+  disabled in the regression. Test setup waits for the preceding manual
+  pagination owner's `document.fonts.ready` and animation frames before the
+  measurement; product restoration retains its existing manual
+  immediate/frame/font-ready ownership.
+- After recovery, public manual newer and older pagination continued through
+  the installed fresh cursors. The complete suite's existing wheel-driven
+  IntersectionObserver regression also remained green. Midnight root
+  success/failure, stale finally, loading state, Calendar recovery retirement
+  and the fresh-process Vite/Playwright runner were unchanged and green.
+- Focused new journey green: `1 passed in 2.9s`, exit code `0`. The expanded
+  save/recovery/font blocker set passed `4 passed in 5.6s`, exit code `0`.
+  After an over-broad root-recovery condition caused an intermediate complete
+  run to report `32 passed, 2 failed`, that non-required root change was
+  removed. The deep-A plus midnight focused set then passed
+  `3 passed in 3.8s`, exit code `0`.
+
+#### Complete local validation
+
+- Personal Website `npm.cmd run typecheck` passed, exit code `0`.
+- Three independent fresh-process executions of
+  `npm.cmd run test:e2e -- --workers=4 --retries=0` each used exactly four
+  workers, ran all 34 Chromium tests (all previous 33 plus the new
+  regression), did not hang and returned exit code `0`:
+  - run 1: `34 passed in 15.5s`;
+  - run 2: `34 passed in 15.9s`;
+  - run 3: `34 passed in 13.7s`.
+- Post-summary mock proxy `ECONNREFUSED` messages did not affect assertions,
+  return or exit codes. Every browser invocation used its own new ignored
+  session directory. All nine exact session-created directories were removed
+  only after validating their absolute paths. Existing ignored, ACL-denied
+  Playwright result directories were not listed, read, changed, added or
+  cleaned.
+- Personal Website `npm.cmd run build` and
+  `npm.cmd run verify:build` both passed, exit code `0`. Build emitted only
+  the existing informational non-module-script warnings.
+- Docker Desktop was confirmed as Linux engine `29.6.2`. Clean ordered
+  `npx.cmd supabase db reset` passed, exit code `0`, and applied all migrations
+  through `20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql`
+  and `20260809120000_enforce_taipei_safe_entry_time_range.sql`.
+- The true upgrade-over-existing-data regression passed
+  `1 passed in 73.05s`, exit code `0`. `python -m mypy src tests` passed with
+  no issue in 21 source files, exit code `0`.
+- The repository-safe ordered Ticket 03-08 Calendar, History, Create,
+  Revision, Entry Time, migration, owner-auth and real mobile Chromium set
+  passed `62 passed in 103.73s`, exit code `0`.
+- Complete `python -m pytest -q` passed `82 passed in 131.15s`, exit code `0`,
+  with only the existing Starlette/httpx deprecation warning. These runs
+  exercised real local Supabase, PostgreSQL forced RLS, PostgREST, FastAPI,
+  Uvicorn and mobile Chromium.
+
+#### Website commit, exact-SHA gates and scope audit
+
+- Personal Website implementation commit
+  `5000da4a53188e72d31add95762f6ee48f9a59cf` changes only
+  `src/diary/EntryExperience.tsx` and
+  `tests/e2e/continuous-history.spec.ts` and was pushed first.
+- [Website checks and Pages run 31325997483](https://github.com/oscar940327/my-personal-website/actions/runs/31325997483)
+  matched that exact SHA, attempt 1, and was `completed/success`. Jobs
+  `build` (`93276355393`) and `deploy` (`93276478717`) matched the same SHA
+  and were `completed/success`.
+- [pages build and deployment run 31325997137](https://github.com/oscar940327/my-personal-website/actions/runs/31325997137)
+  matched the same exact SHA, attempt 1, and was `completed/success`. Jobs
+  `build` (`93276356534`), `report-build-status` (`93276403673`) and
+  `deploy` (`93276403699`) matched that SHA and were `completed/success`.
+  Only after both workflow gates succeeded was Diary CI pinned to the exact
+  Website SHA.
+- Entry Time remains metadata-only. No Diary product, migration or backend
+  test changed. Immutable capture time, Original Content, Entry Revisions and
+  AI obligations; Taipei grouping/counts; microsecond/UUID ordering;
+  exact-once snapshots; safe migrations; owner FastAPI authorization;
+  PostgreSQL RLS; PostgREST owner-token behavior; direct PATCH denial; and
+  Create/edit/restore plus Ticket 03-07 behavior remain green.
+- No secret, `.env` file or production environment variable was added. No
+  Ticket 09, Trash/delete/permanent-delete, AI Draft, Queue, RAG or Agent work
+  began. The existing Note Garden scope drift and all unrelated HOME,
+  PROJECT, JOURNEY, MktAgent and VideoNote files were untouched. No broad
+  `EntryExperience` refactor or non-blocking duplicated-code cleanup occurred.
+- The Diary CI-pin/implementation-record commit and its exact-SHA Backend
+  checks are appended as completion evidence after that remote gate finishes.
+  Ticket 08 remains `ready-for-agent`. The next step is only a separate fresh,
+  complete fixed-range code-review from the original bases Diary
+  `898a6056068ce282e36399d568ea6350bb413f29` and Personal Website
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962`; Ticket 09 remains blocked.
