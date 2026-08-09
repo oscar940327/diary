@@ -1652,3 +1652,148 @@ primary inspection found the complete Ticket 08 contract implemented:
   resolve and stabilize the reading-anchor/validation defect, followed by
   another fresh complete fixed-range code review. A next independent session
   may not start Ticket 09 yet, and this review session did not start it.
+
+### 2026-08-09 - Recovery reading-anchor blocker fixed; fresh review required
+
+#### Session boundary and preflight
+
+- This was a new Ticket 08 blocker-fix implementation/TDD session, not a code
+  review. It did not run the formal fixed-range review and does not claim
+  Ticket 08 PASS.
+- Diary began clean on `main` at
+  `003fbcd942b128ad87776b296cd04fca644d4c77`; Personal Website began clean on
+  `main` at `6a04e418fc0c3e14fdb14cfa590f39825e83c0d4`. In both repositories local
+  `HEAD` and `origin/main` matched the requested starting SHA exactly.
+- The governing repository documents, complete Ticket 08 history, relevant
+  ADRs and the `diagnosing-bugs`, `implement` and `tdd` skills were read before
+  product work. The public seam remained the existing Chromium History
+  recovery journey and its original viewport assertion.
+- Docker Desktop was confirmed as Linux engine `29.6.2`. Existing ignored,
+  ACL-denied Playwright result directories were not read, modified, added to
+  Git or cleaned. Only this session's exact ignored output directories were
+  removed after validation.
+
+#### Deterministic red and root cause
+
+- The first fresh complete baseline ran all 32 Chromium cases with four
+  workers and returned `32 passed`, exit code `0`. A subsequent independent
+  full run displayed all 32 cases as `ok` but never printed the summary or
+  returned; its first process reached the 180-second outer deadline and ended
+  with exit code `124`, so none of the later loop iterations started.
+- Runner instrumentation with `DEBUG=pw:webserver` showed the hang after
+  Playwright logged `Terminating the WebServer`; Vite was available and the
+  browser case had already finished. Starting Vite directly instead of
+  through `npm run dev` reproduced the same boundary, falsifying an npm-wrapper
+  cause. The Windows Playwright-managed webServer teardown was waiting for its
+  spawned process `close` event and could not provide a reliable exit code.
+- Because the original recovery case was timing-dependent, a third case was
+  added at the same public UI seam. It retains the original assertion and
+  tolerance, keeps reading Entry A separate from committed Entry B, disables
+  native scroll-anchor compensation and releases a controlled browser font
+  readiness boundary only after the existing immediate plus one-frame manual
+  restoration. Red command:
+  `npm.cmd run test:e2e -- --workers=4 --grep="after a delayed layout change"`
+  (with a new ignored output directory). It failed for the intended viewport
+  symptom with expected `127.578125`, received `126.359375`, displacement
+  `1.21875px`, exit code `1`. Another independent attempt displayed the same
+  case as failed before the separate teardown hang ended at exit code `124`.
+- The root cause was timing-dependent anchor ownership. The History commit
+  cleared `pendingHistoryAnchor` immediately and retained the captured anchor
+  only through one `requestAnimationFrame`. Font metrics can settle after that
+  boundary, so the final viewport position depended on Chromium's native
+  scroll-anchor choice. The formal four-worker failure's `28.21875px`
+  displacement and the deterministic native-compensation-off red are two
+  manifestations of the same prematurely retired manual anchor.
+
+#### Minimal green implementation
+
+- `EntryExperience` still restores immediately and on the next animation
+  frame, but the same captured anchor closure now remains owned through
+  `document.fonts.ready` and performs the same immediate-plus-frame correction
+  after font layout settles. Cleanup cancels every owned frame and prevents an
+  obsolete effect from restoring after a later Entries generation.
+- The regression controls only the browser font-loading boundary. It does not
+  change the existing viewport assertion, timeout, tolerance, retry policy,
+  worker count or execution mode. The new case passed with exit code `0`.
+- The required npm command now starts one fresh Vite server through Vite's
+  public Node API, launches Playwright as a child with all original CLI
+  arguments, propagates its exact exit code, then awaits `server.close()`.
+  Playwright observes that process-local server without owning its teardown.
+  Debug green showed `Terminating the WebServer` immediately followed by
+  `Terminated the WebServer` and exit code `0`. No server is reused across
+  independent npm invocations.
+- Search/rebuild code was unchanged. Save and `Refresh History` recovery still
+  share the fixed five-page function, require committed B, preserve reading A
+  independently, use one fresh snapshot and only its fresh cursors, install B
+  exactly once and fail closed when B is absent. Manual pagination and the
+  IntersectionObserver continue from the installed fresh cursors.
+
+#### Complete local validation
+
+- Personal Website `npm.cmd run typecheck` passed. The focused save, recovery
+  and delayed-layout set passed `3 passed`, exit code `0`.
+- Three independent fresh-process executions of
+  `npm.cmd run test:e2e -- --workers=4` used exactly four workers, no retry and
+  ran all 33 Chromium tests. They passed `33/33` in `13.9s`, `13.6s` and
+  `13.1s`; every run returned exit code `0` and no run hung.
+- Personal Website `npm.cmd run build` and `npm.cmd run verify:build` passed.
+  Build emitted only the existing informational non-module-script warnings.
+- A clean ordered local Supabase reset applied every migration through
+  `20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql` and
+  `20260809120000_enforce_taipei_safe_entry_time_range.sql`.
+- The true upgrade-over-existing-data regression passed `1 passed in 74.86s`.
+  `python -m mypy src tests` passed for 21 source files.
+- The explicitly ordered Ticket 03-08 Calendar, History, Create, Revision,
+  Entry Time, migration, owner-auth and mobile Chromium set passed
+  `62 passed in 111.99s`. Complete `python -m pytest -q` passed
+  `82 passed in 134.20s` with only the existing Starlette/httpx deprecation
+  warning. These runs exercised real local Supabase, PostgreSQL RLS,
+  PostgREST, FastAPI, Uvicorn and mobile Chromium.
+
+#### Preserved invariants and scope audit
+
+- Entry Time remains metadata-only. Immutable capture time, Original Content,
+  every Entry Revision and AI processing obligation remain unchanged. No
+  revision is created, modified or deleted by a time-only change.
+- Asia/Taipei regrouping and Calendar counts, microsecond/UUID ordering,
+  cross-date and equal-timestamp cursors, exact-once snapshot history, no
+  old-snapshot cursor reuse, invalid-request atomic rollback, owner FastAPI
+  authorization, PostgreSQL RLS and existing Create/edit/restore plus Ticket
+  03-07 behavior remained green.
+- Personal Website changed only `package.json`, `playwright.config.ts`,
+  `scripts/run-playwright.mjs`, `src/diary/EntryExperience.tsx` and
+  `tests/e2e/continuous-history.spec.ts`. Diary changes only the exact Website
+  CI pin and this appended Ticket 08 record; no Diary product, test or
+  migration file changed.
+- No secret or production environment variable was added. The runner's
+  `DIARY_E2E_SERVER_READY` marker and existing synthetic publishable key are
+  process-local test configuration only. Added-line credential-pattern scan
+  returned zero.
+- Ticket 09, Trash, delete, permanent delete, AI Draft, Queue, RAG, Agent,
+  Note Garden and unrelated site pages were not modified or started. No broad
+  `EntryExperience` refactor, non-blocking duplicated-code cleanup or PR was
+  created.
+
+#### Exact commits, Actions and fresh-review handoff
+
+- Personal Website implementation commit
+  `4f47c1d4c36a78f9c49df8885515e3143d34cbb2` was pushed first.
+  [Website checks and Pages run 31320314343](https://github.com/oscar940327/my-personal-website/actions/runs/31320314343)
+  was `completed/success`; jobs `build` (`93262103173`) and `deploy`
+  (`93262219737`) were both `completed/success` at that exact head SHA.
+- [pages build and deployment run 31320314136](https://github.com/oscar940327/my-personal-website/actions/runs/31320314136)
+  was `completed/success`; jobs `build` (`93262103948`), `deploy`
+  (`93262151373`) and `report-build-status` (`93262151375`) were all
+  `completed/success` at the same exact SHA. Only after both exact-SHA gates
+  passed was Diary CI pinned to that Website commit.
+- The Diary commit containing the CI pin and this record is reported in the
+  final implementation handoff after its exact-SHA `Backend checks` run and
+  `test` job finish successfully.
+- Ticket 08 remains `ready-for-agent`. The original bases for the next fresh
+  fixed-range review remain Diary
+  `898a6056068ce282e36399d568ea6350bb413f29` and Personal Website
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962`; its new Website endpoint is
+  `4f47c1d4c36a78f9c49df8885515e3143d34cbb2`, and the new Diary endpoint is
+  the commit containing this record. The next step is only a new independent
+  complete Ticket 08 fixed-range code-review session. Ticket 09 remains
+  blocked and unstarted.
