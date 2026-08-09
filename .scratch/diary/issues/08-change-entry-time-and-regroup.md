@@ -1404,3 +1404,251 @@ unique blocking defects and five axis-specific blocking findings.
   code review and is not Ticket 08 PASS. A separate, fresh, complete
   fixed-range code-review session must still review the original bases before
   Ticket 08 can advance. Do not start Ticket 09.
+
+### 2026-08-09 - Fresh formal complete fixed-range review requires changes
+
+#### Verdict and fixed review boundary
+
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**. Ticket 08 is not
+  PASS, remains `ready-for-agent`, and Ticket 09 remains blocked.
+- Standards axis: **CHANGES-REQUIRED** with one blocking test-quality finding,
+  one low documented-workflow violation and two non-blocking Fowler
+  judgements.
+- Spec axis: **CHANGES-REQUIRED** with one blocking reading-anchor finding and
+  one low non-blocking scope-drift finding.
+- The primary runtime finding appears independently under both axes because it
+  is both unreliable required validation and an observed failure of the
+  reading-anchor behavior. The axes remain separate and are not cross-ranked.
+- Diary fixed range:
+  `898a6056068ce282e36399d568ea6350bb413f29...b4d0e434e05ffbbf016b6905fb75fac9520737de`.
+- Personal Website fixed range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...6a04e418fc0c3e14fdb14cfa590f39825e83c0d4`.
+- Two independent read-only sub-agents reviewed Standards and Spec in
+  parallel. Both inspected the complete three-dot ranges, including the
+  original implementation, all fixes, migrations, tests, CI pin and preserved
+  records rather than only the latest blocker-fix commits. The primary
+  reviewer separately performed code inspection and local validation.
+
+#### Fixed-range preflight
+
+- Both repositories began clean on `main`. Local `HEAD` and `origin/main`
+  exactly matched Diary
+  `b4d0e434e05ffbbf016b6905fb75fac9520737de` and Personal Website
+  `6a04e418fc0c3e14fdb14cfa590f39825e83c0d4`.
+- Both fixed bases and endpoints resolved. Each `git merge-base` exactly
+  equalled its specified base, both ranges were non-empty, and both complete
+  `git diff <base>...<endpoint> --check` commands returned exit code zero.
+- Diary's range contains 11 commits, newest first:
+  `b4d0e43`, `2db44e7`, `b8d719f`, `0ebb90d`, `a9ca311`, `662c0b1`,
+  `432ed2f`, `9946709`, `189bd18`, `8e7eb60`, `5f7362f`.
+- Personal Website's range contains seven commits, newest first:
+  `6a04e41`, `ee25f7e`, `774787b`, `18dc585`, `7a48078`, `7898db9`,
+  `3d1e27e`.
+- Diary changed files were `.github/workflows/ci.yml`, this Ticket 08 record,
+  `README.md`, `src/diary_api/app.py`, `src/diary_api/entries.py`, five
+  ordered Ticket 08 migrations from `20260804120000` through
+  `20260809120000`, `tests/system/test_continuous_history.py`,
+  `tests/system/test_entry_time.py`, `tests/system/test_migration_upgrade.py`
+  and `tests/system/test_owner_browser_authentication.py`.
+- Personal Website changed files were `README.md`, `index.html`,
+  `src/diary/CalendarView.tsx`, `src/diary/EntryExperience.tsx`,
+  `src/diary/api.ts`, `tests/e2e/calendar-navigation.spec.ts`,
+  `tests/e2e/continuous-history.spec.ts` and
+  `tests/e2e/diary-tracer.spec.ts`.
+
+#### Standards report
+
+1. **Medium - blocking test-quality finding: the required four-worker browser
+   validation is not reliable.** Personal Website
+   `tests/e2e/continuous-history.spec.ts:976-980` failed in the required full
+   32-test Chromium run while polling the recovered reading card's viewport
+   position. It expected `127.578125`, repeatedly received `99.359375`, and
+   timed out after a 28.21875-pixel displacement. The run ended `31 passed,
+   1 failed`, exit code 1. A no-retry isolated invocation later displayed the
+   same case as `ok` in 973 ms but the Playwright/Vite process never exited and
+   was terminated by the outer 180-second command deadline, exit code 124.
+   Thus the changed regression cannot reliably establish its claimed green
+   result, and the complete validation gate did not succeed. No timeout,
+   retry, serial mode, worker reduction or assertion weakening was applied.
+2. **Low - documented-standard violation, non-blocking scope drift.** Personal
+   Website `index.html:132`, commit `18dc585`, adds a Note Garden homepage
+   link. Diary `docs/agents/development-workflow.md:11,19` requires exactly one
+   selected ticket as the active implementation unit. This unrelated retained
+   change is inside the fixed Ticket 08 range. The review preserves it and
+   does not request a change in this session.
+3. **Low - Fowler Duplicated Code, judgement only.** Personal Website
+   `src/diary/EntryExperience.tsx:917-925,982-988` repeats the rebuilt-window
+   installation sequence. This is not a blocker and this review does not ask
+   for cleanup.
+4. **Low - possible Fowler Divergent Change, judgement only.** Personal
+   Website `src/diary/EntryExperience.tsx:158-257,442-578,649-999` combines
+   timestamp ordering, bounded search, generation/abort ownership, mutation
+   recovery and pagination. A broad refactor remains explicitly outside
+   Ticket 08 and is not requested.
+
+The independent Standards sub-agent found no static migration, transaction,
+authorization, RLS or security blocker. Primary inspection agreed: the ordered
+`20260807120000` expand step locks Entries, audits every preceding-valid unsafe
+row, subtracts exactly 24 hours only from active `entry_at`, preserves the old
+and trigger-created current History positions, and uses forced RLS, owner-only
+select grants and an update/delete rejection trigger for immutable evidence.
+The later constraint and both controlled RPCs share FastAPI's Taipei-safe
+range and preserve their named arguments, security mode, permissions and
+return shape. Residual Standards gaps are direct DELETE-rejection coverage for
+the audit and launching a separately built immediately previous FastAPI
+binary; these are coverage gaps, not findings.
+
+#### Spec report
+
+1. **Medium - blocking: recovery does not reliably preserve the loaded
+   History reading anchor.** The required full four-worker run reproduced an
+   owner-visible 28.21875-pixel displacement in Personal Website
+   `tests/e2e/continuous-history.spec.ts:976-980` after a committed Entry Time
+   change entered `Refresh History` recovery. The implementation assigns the
+   saved reading anchor at
+   `src/diary/EntryExperience.tsx:982` and attempts restoration immediately
+   plus once in `requestAnimationFrame` at
+   `src/diary/EntryExperience.tsx:483-494`, but it did not converge within the
+   existing five-second assertion window in the complete run. The later
+   isolated `ok` makes the behavior timing-dependent rather than curing the
+   observed failure. This violates `.scratch/diary/spec.md:47,200`, which
+   requires explicit visual scroll anchoring in bidirectional History, and it
+   prevents the mandatory complete local validation from succeeding. This
+   review records the finding without diagnosing or implementing a fix.
+2. **Low - non-blocking scope drift.** Personal Website `index.html:132` adds
+   the Note Garden homepage link, while Ticket 08
+   `.scratch/diary/issues/08-change-entry-time-and-regroup.md:3-17` is limited
+   to Entry Time mutation/regrouping and the MVP preserves unrelated existing
+   site behavior (`.scratch/diary/spec.md:15,158,193`). The link is retained
+   exactly as instructed and is not a Ticket 09 change.
+
+Apart from the runtime anchor finding, the independent Spec sub-agent and
+primary inspection found the complete Ticket 08 contract implemented:
+
+- Entry Time remains metadata-only; immutable Entry capture time, every Entry
+  Revision, Original Content, AI processing obligations, idempotency and other
+  metadata are preserved.
+- Asia/Taipei regrouping and Calendar counts, microsecond/UUID ordering,
+  cross-date and equal-time cursors, snapshot membership exact-once,
+  stale-cursor exclusion, owner FastAPI authorization, PostgreSQL RLS and
+  invalid-request atomic rollback are covered.
+- The true upgrade begins from the schema immediately after
+  `20260805120000_harden_create_entry_time_range.sql`, handles zero and
+  multiple unsafe rows transactionally, stores exact before/after timestamps,
+  Entry/owner identity, reason, migration version/time evidence, and replays
+  idempotently without changing preserved state.
+- Table, FastAPI, Create RPC and Change RPC use inclusive
+  `0001-01-01T00:00:00Z` through
+  `9999-12-31T15:59:59.999999Z`; offsets are required and UTC normalization
+  overflow is rejected. Current detail, History and Calendar reads, and both
+  current and immediately previous application RPC contracts remain usable,
+  consistent with ADR 0013.
+- Bounded rebuild treats reading A and changed B separately, requires B,
+  fairly searches the necessary newer side despite at least 80 older Entries,
+  uses one fresh snapshot and its cursors, keeps a fixed total five-page
+  budget, installs B exactly once, shares save/recovery behavior and fails
+  closed when B is absent.
+- Midnight root success/failure retains committed-mutation ownership or an
+  explicit retryable recovery, retires editor/loading/pending-anchor state,
+  blocks stale finally cleanup and continues manual pagination and
+  IntersectionObserver from fresh cursors.
+- Only synthetic sessions that cross simulated midnight use the 48-hour
+  lifetime. Product authentication is unchanged, and no retry, serial mode,
+  worker reduction or weakened assertion was added.
+- Existing Create, Original Content edit, revision restore and Ticket 03-07
+  behavior passed the backend system suites. Residual Spec gaps are exact-
+  extrema execution through an actual previous FastAPI binary and browser
+  editing of a year-0001 Entry; real backend boundary coverage exists, so
+  these are not findings.
+
+#### Local read-only validation
+
+- Docker Desktop was available as Linux engine `29.6.2`.
+- `npx.cmd supabase db reset` passed and applied the complete ordered chain
+  through `20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql`
+  and `20260809120000_enforce_taipei_safe_entry_time_range.sql`.
+- The true upgrade-over-existing-data command
+  `python -m pytest -q tests/system/test_migration_upgrade.py` passed
+  `1 passed in 75.81s`.
+- `python -m mypy src tests` passed with no issue in 21 source files.
+- The ordered focused Calendar, History, Create, Revision, Entry Time,
+  migration, owner-auth and real mobile Chromium set passed
+  `62 passed in 107.27s`.
+- Complete `python -m pytest -q` passed `82 passed in 126.93s` with the one
+  existing Starlette/httpx deprecation warning. These tests exercised the
+  real local Supabase, PostgreSQL RLS, PostgREST, FastAPI, Uvicorn and mobile
+  Chromium seam.
+- Personal Website `npm.cmd run typecheck`, `npm.cmd run build` and
+  `npm.cmd run verify:build` passed. Build emitted only existing informational
+  non-module-script warnings.
+- The required full browser command was run with exactly four workers and only
+  an ignored review-output override:
+  `npm.cmd run test:e2e -- --workers=4 --output=test-results/ticket08-fixed-review-b4d0e43`.
+  It ran all 32 Chromium tests and failed `31 passed, 1 failed`, exit code 1,
+  for the Standards/Spec finding above. Therefore complete local validation
+  did not succeed.
+- The isolated no-retry diagnostic displayed the failed case as `ok` but did
+  not return before the 180-second outer deadline. Both exact review-only
+  ignored output directories created by this session were removed afterward.
+  Existing ACL-denied Playwright result directories were not read, modified,
+  added to Git or cleaned.
+
+#### Exact implementation-SHA GitHub Actions evidence
+
+- Personal Website `Website checks and Pages` run
+  [31308076193](https://github.com/oscar940327/my-personal-website/actions/runs/31308076193)
+  matched `6a04e418fc0c3e14fdb14cfa590f39825e83c0d4` and was
+  `completed/success`, attempt 1. Jobs `build` (`93231495371`) and `deploy`
+  (`93231606290`) were both `completed/success`; all returned steps were also
+  `completed/success`.
+- Personal Website `pages build and deployment` run
+  [31308075493](https://github.com/oscar940327/my-personal-website/actions/runs/31308075493)
+  matched the same Website SHA and was `completed/success`, attempt 1. Jobs
+  `build` (`93231495530`), `report-build-status` (`93231542952`) and `deploy`
+  (`93231542977`) were all `completed/success`; all returned steps were also
+  `completed/success`.
+- Diary `Backend checks` run
+  [31308300883](https://github.com/oscar940327/diary/actions/runs/31308300883)
+  matched `b4d0e434e05ffbbf016b6905fb75fac9520737de` and was
+  `completed/success`, attempt 1. Its `test` job (`93232048634`) and every
+  returned step were `completed/success`.
+- These green exact-SHA implementation runs do not override the required local
+  four-worker failure because that failed behavior is inside their claimed
+  coverage and the formal review requires complete successful local
+  validation.
+
+#### Scope, secret and modification audit
+
+- No `.env` file changed in either fixed range. A redacted added-line scan of
+  implementation files found no credential-shaped token, private key, JWT or
+  committed secret. References were limited to existing configuration/token
+  plumbing, roles and synthetic test values. No new production environment
+  variable is introduced.
+- No Ticket 09, Trash, delete, permanent delete, AI Draft generation, Queue,
+  RAG or Agent implementation was found or started. This review did not start
+  Ticket 09.
+- The pre-existing-in-range Note Garden link is the low scope finding above;
+  it was not modified by the latest blocker fix or by this review. No other
+  unrelated existing-site change was found.
+- No broad `EntryExperience` refactor or non-blocking duplicated-code cleanup
+  was performed or requested. No PR was created.
+- This review changed only this Ticket 08 documentation. It did not modify
+  product code, tests, migrations, CI or Personal Website files, and it did
+  not fix any finding.
+
+#### Final axis counts and next step
+
+- Standards: four findings total — one Medium blocking test-quality finding,
+  one Low documented-workflow violation and two Low non-blocking Fowler
+  judgements. The most severe Standards item is the Medium unreliable required
+  browser validation finding.
+- Spec: two findings total — one Medium blocking reading-anchor finding and
+  one Low non-blocking scope-drift finding. The most severe Spec item is the
+  Medium recovery reading-anchor failure.
+- There is no cross-axis winner. Because both axes contain a blocking finding
+  and complete local validation failed, the final verdict is
+  **CHANGES-REQUIRED**. Ticket 08 is not PASS.
+- The next allowed work is a separate Ticket 08 implementation/TDD session to
+  resolve and stabilize the reading-anchor/validation defect, followed by
+  another fresh complete fixed-range code review. A next independent session
+  may not start Ticket 09 yet, and this review session did not start it.
