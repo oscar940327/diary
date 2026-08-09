@@ -1797,3 +1797,15 @@ primary inspection found the complete Ticket 08 contract implemented:
   the commit containing this record. The next step is only a new independent
   complete Ticket 08 fixed-range code-review session. Ticket 09 remains
   blocked and unstarted.
+
+#### Diary exact-SHA completion evidence
+
+- Diary implementation/pin/record commit
+  `aa07c8f0eba44693dd552a6d4bac09927745e3b3` was pushed after both Website
+  workflows were green.
+- [Backend checks run 31320499489](https://github.com/oscar940327/diary/actions/runs/31320499489)
+  matched that exact Diary SHA and was `completed/success`; its `test` job
+  (`93262589771`) was also `completed/success` at the same exact head SHA.
+- The documentation-only commit that adds this completion evidence is the
+  final Diary endpoint reported in the implementation handoff after its own
+  exact-SHA Backend checks completes successfully.
