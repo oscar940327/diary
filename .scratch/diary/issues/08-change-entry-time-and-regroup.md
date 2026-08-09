@@ -1161,3 +1161,246 @@ unique blocking defects and five axis-specific blocking findings.
 - Ticket 08 is **not PASS** and remains `ready-for-agent`. The next allowed work
   is a separate Ticket 08 fix/TDD session for these blockers, followed by a new
   independent complete fixed-range review. Do not start Ticket 09.
+
+### 2026-08-09 - Blocker-fix session stopped at required metadata-policy decision
+
+#### Independent preflight and TDD boundary
+
+- This was a new Ticket 08 blocker-fix/TDD implementation session, not a code
+  review. It did not run a fixed-range review and does not claim Ticket 08
+  passed.
+- Diary started clean on `main` at
+  `2db44e7526ab216f4301a1ce9cffcbe10e98935a`; Personal Website started clean
+  on `main` at `ee25f7e0b03a21aaa78b587f2aa19c69b9cdd767`.
+  In both repositories `HEAD` exactly matched `origin/main` and the requested
+  starting SHA. The original Ticket 08 bases
+  `898a6056068ce282e36399d568ea6350bb413f29` and
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962` were present, were the exact
+  merge-bases, and remained available for a later fresh review.
+- The confirmed public seams were the ordered PostgreSQL migration boundary,
+  FastAPI detail/History/Calendar, browser save/recovery, clock-controlled
+  root takeover, and the real Supabase/RLS/PostgREST/FastAPI/Uvicorn/mobile
+  Chromium journey. TDD began with blocker 1 because its decision gate can
+  prohibit all product implementation.
+- Docker Desktop's Linux engine was started and confirmed as `linux` server
+  `29.6.2`. Known ignored ACL-denied Personal Website Playwright result
+  directories were not read, cleaned, modified or added to Git.
+
+#### Blocker 1 red evidence and required decision
+
+- A real local Supabase reset stopped exactly at the immediately preceding
+  schema version `20260805120000_harden_create_entry_time_range.sql`.
+- PostgreSQL then held one preceding-version-valid Entry at
+  `9999-12-31T16:00:00Z`, with stable Entry UUID, current Revision UUID,
+  Original Content, revision number and timestamp, pending AI processing UUID
+  and both obligations, attempt count, immutable capture/update metadata,
+  idempotency key and current `entry_history_positions` row all recorded before
+  upgrade.
+- Red: `npx.cmd supabase migration up --local` returned exit code `1` while
+  applying `20260809120000_enforce_taipei_safe_entry_time_range.sql`. Its first
+  `alter table ... add constraint
+  entries_entry_at_taipei_grouping_safe_range` statement failed because the
+  preceding-version-valid row exceeds
+  `9999-12-31T15:59:59.999999Z`. No RPC replacement ran.
+- The failed migration transaction preserved the Entry, Entry Revision,
+  Original Content, AI processing obligation, History position, idempotency
+  state and metadata byte-for-byte. It did not record migration
+  `20260809120000`, and the Taipei-safe constraint was absent afterward. A
+  subsequent clean current `db reset` applied the complete existing chain,
+  confirming again that fresh reset alone cannot cover this upgrade defect.
+- No green implementation was attempted. Making the row satisfy the published
+  CHECK necessarily changes, removes or relocates its current `entry_at`.
+  Neither the specification nor ADR 0013 defines whether such metadata must be
+  clamped, quarantined, exposed through a legacy representation, or handled by
+  another owner-visible correction workflow. Preserving the old value in an
+  audit column/table would retain evidence but would still require an explicit
+  policy for the active Entry Time seen by current and immediately previous
+  applications.
+- The session therefore followed the ticket's mandatory rule not to guess an
+  irreversible metadata transformation policy. Product implementation stopped
+  pending an owner decision that specifies the active safe Entry Time and
+  owner-visible/auditable treatment of every preceding-version-valid unsafe
+  value.
+
+#### Remaining blockers, validation and scope audit
+
+- Blockers 2, 3 and 4 did not enter their red/green cycles because blocker 1's
+  explicit decision gate stopped product implementation. No fixed-direction
+  rebuild, committed-mutation takeover, or synthetic-session code/test change
+  was made, and no green evidence is claimed for any blocker.
+- No Personal Website product code or tests changed. No Diary product code,
+  test, migration or CI file changed. The requested complete local suites,
+  commits, pushes and exact-SHA GitHub Actions sequence were not run because a
+  four-blocker green implementation was not available.
+- No secret or environment variable was added. Ticket 09, Trash, delete,
+  permanent delete, AI Draft, Queue, RAG and Agent work were not started. The
+  Note Garden link and unrelated site pages were not modified. No broad
+  `EntryExperience` refactor or non-blocking duplicated-code cleanup occurred.
+- Ticket 08 remains `ready-for-agent`. This stopped session is not a review and
+  is not Ticket 08 PASS. After the metadata policy is decided and all four
+  blockers are fixed and verified in a new/continued TDD implementation
+  session, Ticket 08 still requires another independent complete fixed-range
+  code-review session from the original bases. Ticket 09 remains blocked.
+
+### 2026-08-09 - Four-blocker TDD implementation completed; fresh review required
+
+#### Session boundary and exact starting state
+
+- This continued the Ticket 08 blocker-fix/TDD implementation session after
+  the owner authorized the metadata transformation policy. It was not a code
+  review, did not perform the formal fixed-range review and does not claim
+  Ticket 08 PASS.
+- Diary started at `2db44e7526ab216f4301a1ce9cffcbe10e98935a` with
+  only the preserved stopped-session record above modified. Personal Website
+  started clean at `ee25f7e0b03a21aaa78b587f2aa19c69b9cdd767`.
+  Both matched `origin/main`. The original future-review bases remain Diary
+  `898a6056068ce282e36399d568ea6350bb413f29` and Personal Website
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962`.
+- TDD used the public migration, FastAPI, History/Calendar browser and
+  clock-controlled seams. Each blocker retained or obtained a failure for the
+  intended reason before the smallest scoped production/test change was made.
+
+#### Blocker 1 - upgrade-safe expand-contract migration
+
+- **Red:** from an actual local schema stopped exactly after
+  `20260805120000_harden_create_entry_time_range.sql`, two complete
+  preceding-version-valid Entries above the Taipei-safe maximum caused the
+  ordered upgrade to fail on the existing `20260809120000` table CHECK. The
+  first red fixture proved that the failed transaction left Entry, Revision,
+  Original Content, pending AI obligation, History position, idempotency and
+  metadata intact. Setup-only auth-FK failures were corrected before this red
+  was accepted.
+- **Minimal fix:** added the new ordered expand step
+  `20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql`; no
+  published migration was edited. In one explicit transaction it locks
+  Entries, writes every unsafe original value and exact transformed value to
+  immutable `entry_time_migration_audits`, then changes only active unsafe
+  `entry_at` values by exactly minus 24 hours. The audit stores Entry and owner
+  identity, reason, migration version and migration evidence. Its constraints
+  encode the old-valid/new-safe ranges and exact shift; RLS plus grants permit
+  authenticated owner reads while denying anonymous, cross-owner and owner
+  writes, and a trigger rejects update/delete. Existing History positions are
+  retained and the normal trigger creates the new current position.
+- **Green:** the permanent system regression now creates two unsafe rows plus
+  a safe control through the preceding RPC, applies the ordered upgrade and
+  verifies exact microseconds and unsafe-row relative order; Entry UUID,
+  Entry Revision and Original Content; AI obligation; idempotency; immutable
+  capture metadata; old/new History positions; audit evidence; and current
+  detail, History and Calendar reads. It verifies owner/non-owner/anonymous
+  audit access, denied owner mutation, named PostgREST arguments and exact
+  Create/Change return shapes, then replays the expand migration and proves all
+  state unchanged. A clean zero-row reset also applies the complete order.
+- Final FastAPI validation, table constraint, Create RPC and Change RPC all use
+  `0001-01-01T00:00:00Z` through
+  `9999-12-31T15:59:59.999999Z`. RPC permissions, RLS/security mode, named
+  arguments, return shape and ordinary behavior remain compatible. Both the
+  immediately previous application and current application remain usable
+  after expansion; the later contract step is safe over existing data. This
+  satisfies ADR 0013's expand-contract and rollback-compatibility requirement.
+
+#### Blocker 2 - bounded rebuild direction
+
+- **Red:** a Chromium regression gave fresh root both cursors, used reading
+  card A and distinct changed Entry B, moved B from A's date to the next day
+  where only the newer cursor could find it, and supplied at least 80 older
+  Entries. The existing older-first logic spent all five requests without one
+  newer request, so deterministic save/recovery failed to find committed B.
+- **Minimal fix:** rebuild search now receives the complete committed active
+  Entry, compares its new date/microsecond/UUID rank with the fresh window,
+  chooses the necessary direction, and fairly searches both sides when rank is
+  ambiguous. Save rebuild and Refresh History recovery use the same function.
+  The existing total budget remains exactly five pages; it is independent of
+  lifetime/loaded count and never downloads lifetime History.
+- **Green:** both save and recovery regressions requested the required newer
+  page, used one fresh snapshot and only its fresh continuation cursors, found
+  B exactly once, preserved A as an independent reading anchor within viewport
+  tolerance, and kept manual continuation usable. The search remained bounded
+  and fail-closed: it cannot install a window missing the committed active
+  Entry.
+
+#### Blocker 3 - midnight root ownership after commit
+
+- **Red:** clock-controlled success and failure cases committed Change Entry
+  Time, delayed the new rebuild, then started Taipei-midnight root takeover.
+  The old generation ownership left the editor open in the success case and
+  omitted the committed mutation's `Refresh History` recovery in the failure
+  case.
+- **Minimal fix:** committed-mutation recovery is handed off explicitly before
+  root takeover. Root success installs only its fresh snapshot/window and
+  clears recovery only when it contains committed B. Root failure retains an
+  explicit retryable committed recovery. Operation refs and generation checks
+  prevent stale `finally` from clearing newer state; editor, pending anchor,
+  Calendar invalidation and operation-specific loading state are retired or
+  transferred at the ownership boundary.
+- **Green:** root-success and root-failure regressions passed. They prove no old
+  snapshot cursor is installed, Calendar/editor/History state agrees with the
+  committed mutation, retry survives failure, and manual pagination plus
+  IntersectionObserver can continue from fresh cursors. A real mobile seam
+  exposed and drove removal of an early old-snapshot merge; the resulting
+  relevant real-browser journey passed.
+
+#### Blocker 4 - synthetic auth across simulated midnight
+
+- **Red:** both midnight-adjacent cases reproduced `Sign in to Diary` after a
+  3,601-second clock advance while their synthetic JWT/session had only 3,600
+  seconds remaining. Saved error-context DOM showed authentication expiry, not
+  a root-lifecycle assertion failure.
+- **Minimal fix:** only the synthetic sessions that advance across midnight
+  now receive a 48-hour lifetime. Product authentication behavior is unchanged.
+  No timeout, retry, serial mode, worker reduction, lifecycle mock or relaxed
+  assertion was introduced.
+- **Green:** both cases remained in authenticated Diary and verified the
+  History lifecycle; the complete final suite ran exactly four workers and all
+  32 Chromium tests passed with exit code 0.
+
+#### Preserved invariants and local green evidence
+
+- Entry Time remains metadata-only. No Entry Revision is created, changed or
+  deleted; immutable capture time, Original Content, AI processing obligation,
+  idempotency and other metadata are preserved. Asia/Taipei regrouping and
+  Calendar counts, microsecond/UUID ordering, exact-once History positions,
+  cross-date/equal-timestamp cursors, reading anchor/window behavior, owner
+  authentication/FastAPI authorization/PostgreSQL RLS and invalid-request
+  atomic rollback remain covered. Create, edit, restore and Ticket 03-07
+  behavior did not regress.
+- Docker Desktop Linux engine was available (`linux`, server `29.6.2`). A clean
+  ordered Supabase reset passed through the new expand step and existing
+  contract migration. The true upgrade-over-existing-data regression passed.
+- Diary `python -m mypy src tests` passed (`21` files); ordered Ticket 04-08
+  Calendar, History, Revision, Entry Time, auth and upgrade regressions passed
+  `41 passed in 99.90s`; complete `python -m pytest -q` passed `82 passed` in
+  `120.69s` with only the existing Starlette/httpx deprecation warning. These
+  runs exercised real Supabase, PostgreSQL RLS, PostgREST, FastAPI, Uvicorn and
+  mobile Chromium.
+- Personal Website typecheck, build and build verification passed. The final
+  complete Chromium run was exactly `32` tests with exactly four workers:
+  `32 passed` in `11.7s`, exit code `0`. Build emitted only existing
+  informational non-module-script warnings. Only this session's named ignored
+  result directories were eligible for cleanup; existing ACL-denied artifacts
+  were untouched and nothing from them was added to Git.
+
+#### Exact Website SHA gate and scope audit
+
+- Personal Website was committed and pushed as
+  `6a04e418fc0c3e14fdb14cfa590f39825e83c0d4`. Exact-SHA
+  [Website checks and Pages run 31308076193](https://github.com/oscar940327/my-personal-website/actions/runs/31308076193)
+  completed successfully; its `build` and `deploy` jobs were both
+  `completed/success`.
+- Exact-SHA
+  [pages build and deployment run 31308075493](https://github.com/oscar940327/my-personal-website/actions/runs/31308075493)
+  completed successfully; its `build`, `report-build-status` and `deploy` jobs
+  were all `completed/success`. Only after those gates passed was Diary CI
+  pinned to that exact Website SHA.
+- Product scope stayed within the four blockers: Website changed only
+  `src/diary/EntryExperience.tsx` and
+  `tests/e2e/continuous-history.spec.ts`; Diary adds only the ordered migration
+  and permanent upgrade regression, updates the exact Website CI pin and
+  appends this preserved ticket record. No secret or production environment
+  variable was added. Ticket 09, Trash/delete/permanent-delete, AI Draft,
+  Queue, RAG and Agent work were not started. The Note Garden link was not
+  changed. No broad `EntryExperience` refactor or non-blocking duplicated-code
+  cleanup occurred, and no PR was created.
+- Ticket 08 remains `ready-for-agent`. This implementation record is not a
+  code review and is not Ticket 08 PASS. A separate, fresh, complete
+  fixed-range code-review session must still review the original bases before
+  Ticket 08 can advance. Do not start Ticket 09.

@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: oscar940327/my-personal-website
-          ref: ee25f7e0b03a21aaa78b587f2aa19c69b9cdd767
+          ref: 6a04e418fc0c3e14fdb14cfa590f39825e83c0d4
           path: personal-website
           persist-credentials: false
 
