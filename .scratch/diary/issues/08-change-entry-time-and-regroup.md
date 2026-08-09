@@ -2154,3 +2154,17 @@ checks from establishing a complete Ticket 08 PASS.
   complete fixed-range code-review from the original bases Diary
   `898a6056068ce282e36399d568ea6350bb413f29` and Personal Website
   `231ebe21ed09ec7d777f3c78ed6eb58aab396962`; Ticket 09 remains blocked.
+
+#### Diary exact-SHA completion evidence
+
+- Diary CI-pin and implementation-record commit
+  `f16909280ccbccc0e61c62e0321bb91d495a742e` was pushed only after both
+  exact Website workflow gates succeeded.
+- [Backend checks run 31326200227](https://github.com/oscar940327/diary/actions/runs/31326200227)
+  matched that exact Diary SHA, attempt 1, and was `completed/success`. Its
+  `test` job
+  [93276860199](https://github.com/oscar940327/diary/actions/runs/31326200227/job/93276860199)
+  matched the same SHA and was `completed/success`.
+- The documentation-only commit that adds this completion evidence is the
+  final Diary endpoint reported in the implementation handoff after its own
+  exact-SHA Backend checks and all returned jobs complete successfully.
