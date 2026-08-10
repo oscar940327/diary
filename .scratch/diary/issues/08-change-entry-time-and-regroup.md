@@ -2168,3 +2168,204 @@ checks from establishing a complete Ticket 08 PASS.
 - The documentation-only commit that adds this completion evidence is the
   final Diary endpoint reported in the implementation handoff after its own
   exact-SHA Backend checks and all returned jobs complete successfully.
+
+### 2026-08-10 - Fresh formal complete fixed-range code review requires changes
+
+#### Review boundary and preflight
+
+- Overall verdict: **CHANGES-REQUIRED**. Standards is `PASS` with no blocking
+  finding. Spec is `CHANGES-REQUIRED` with two High blocking findings. Passing
+  tests are supporting evidence and do not override either inspection finding.
+- This was a new review from the immutable three-dot ranges:
+  - Diary
+    `898a6056068ce282e36399d568ea6350bb413f29...771a2f910b35d22844a21fb539ca4acdb4a2e8ac`;
+  - Personal Website
+    `231ebe21ed09ec7d777f3c78ed6eb58aab396962...5000da4a53188e72d31add95762f6ee48f9a59cf`.
+- Before review, both repositories were on `main`, their local `HEAD` and
+  `origin/main` exactly matched the required endpoints, and both tracked
+  worktrees were clean. Every base and endpoint existed. Each merge-base was
+  exactly the specified base. The Diary range contained 17 commits and the
+  Website range contained 9 commits, so both ranges were non-empty. Complete
+  three-dot `git diff --check` returned exit code `0` for each range.
+- GitHub remote `main` contained both exact endpoints. Known preservation
+  commit `237e0eac087aabe689ec14d8599f7d7e04221d04`, Diary pin/record commit
+  `f16909280ccbccc0e61c62e0321bb91d495a742e`, and the final Diary endpoint
+  were present in the reviewed Diary ancestry. Website implementation commit
+  `5000da4a53188e72d31add95762f6ee48f9a59cf` was the exact Website endpoint.
+- Primary review read the complete code-review skill, repository instructions,
+  development workflow, domain, issue tracker, `CONTEXT.md`, full product spec,
+  full Ticket 08 record and all 15 accepted ADRs (`0001` through `0015`). It
+  independently inspected both complete fixed ranges and all changed product,
+  test, migration and CI files. Two isolated read-only reviewers independently
+  reviewed Standards and Spec; their findings were aggregated only after
+  primary inspection.
+
+#### Standards axis - PASS
+
+Blocking findings: **0**. Non-blocking findings: **3**.
+
+1. **Low, non-blocking - known hard workflow/scope drift remains in the fixed
+   range.** Personal Website `index.html:132` adds Note Garden, contrary to the
+   Diary-only boundary in `docs/agents/development-workflow.md:3,11,19-20` and
+   ADR 0005. Owner-visible impact: the reviewed range contains an unrelated
+   navigation/product change, so the range is not perfectly scope-isolated.
+   This is the explicitly known pre-existing Note Garden drift; this review
+   does not request, perform or permit its removal or cleanup.
+2. **Low, non-blocking - duplicated rebuilt-window installation.** Personal
+   Website `src/diary/EntryExperience.tsx:953-961` and `:1019-1025` repeat the
+   Entry/cursor/state installation sequence for Save and Refresh History.
+   Owner-visible impact: a later lifecycle change could update one successful
+   path but not the other. Current inspected behavior and tests do not establish
+   a separate present defect, so no cleanup is requested in this review.
+3. **Low, non-blocking - divergent change concentration.** Personal Website
+   `src/diary/EntryExperience.tsx:159-274,459-730,870-1037` owns bounded rebuild,
+   request ownership, midnight refresh, Entry Time Save and recovery in one
+   component. Owner-visible impact: unrelated lifecycle edits have a larger
+   regression surface. This is a maintainability judgment, not permission for
+   a large refactor and not a blocking defect in this fixed review.
+
+Standards verdict: **PASS**. The known scope drift is recorded but deliberately
+left untouched, and the two code-smell judgments are non-blocking.
+
+#### Spec axis - CHANGES-REQUIRED
+
+Blocking findings: **2**. Non-blocking findings: **1**.
+
+1. **High, blocking - an immediately previous-version Create can permanently
+   miss its initial History position during upgrade.** Diary
+   `supabase/migrations/20260804120000_change_entry_time_and_stabilize_history.sql:125-134`
+   backfills `entry_history_positions`, but the initial-position trigger is not
+   installed until `:166-190`, and the migration does not lock out concurrent
+   inserts for the interval. An old application transaction can insert an Entry
+   after the backfill snapshot, commit while trigger creation waits, and never
+   receive a position. The History v5 inner join at `:324-326` then hides the
+   owner Entry, while a later Entry Time change reaches the missing-current
+   guard at `:204-213` and fails. Owner-visible impact: a successfully captured
+   Entry can disappear from continuous History during a blue-green upgrade and
+   cannot be regrouped later. This violates the complete History obligation in
+   `.scratch/diary/spec.md:39`, immediately-previous-version migration
+   compatibility at `:169`, ADR 0013 and the Ticket's own compatibility claim
+   at `08-change-entry-time-and-regroup.md:1297-1299`. The upgrade regression
+   begins its old-data setup after this migration has already been installed,
+   so its pass cannot cover the concurrency window.
+2. **High, blocking - Taipei-midnight root takeover can install B without the
+   independent reading Entry A.** The shared bounded rebuild correctly treats
+   A and B as mandatory at Personal Website
+   `src/diary/EntryExperience.tsx:159-266`. However, when a committed rebuild is
+   superseded by the today-anchor midnight root, `:544-583` installs the fresh
+   initial page and clears recovery whenever active changed Entry B is present;
+   it neither requires deep reading Entry A nor restores A's pending manual
+   anchor. If A is around rank 78-80 and absent from the fresh initial 60 while
+   B is present, the owner loses the Entry being read and the viewport can jump,
+   with no retryable `Refresh History` recovery. This bypasses the five-page
+   fail-closed A/B contract and violates `.scratch/diary/spec.md:47,200` plus
+   the Ticket guarantee at
+   `08-change-entry-time-and-regroup.md:2061-2065`. The midnight regression at
+   Personal Website `tests/e2e/continuous-history.spec.ts:1705-1991` gives the
+   fresh root B and a companion but omits A, then asserts B and continuation
+   only (`:1945-1990`); therefore its pass demonstrates the uncovered defect
+   rather than closing it.
+3. **Low, non-blocking - known Note Garden scope drift.** Personal Website
+   `index.html:132` changes unrelated product navigation. Owner-visible impact
+   is an impure Ticket 08 range. Per the explicit review boundary, this known
+   drift is preserved and is not a requested Ticket 08 fix.
+
+Spec verdict: **CHANGES-REQUIRED**. Both High findings affect mandatory owner
+behavior. No passing local or remote gate can downgrade them.
+
+#### Mandatory local validation evidence
+
+- Personal Website `npm.cmd run typecheck`: exit code `0`, command duration
+  `5.09s`.
+- Focused deep-A, Save/recovery, font-timing and midnight Chromium regressions:
+  `8 passed in 12.2s`, exactly 4 workers, no retries, command duration `26.63s`,
+  exit code `0`.
+- Three independent fresh-process executions of
+  `npm.cmd run test:e2e -- --workers=4 --retries=0` each used exactly four
+  workers, ran all 34 Chromium tests, had no hang and returned exit code `0`:
+  - run 1: `34 passed in 15.6s`, command duration `25.81s`;
+  - run 2: `34 passed in 14.3s`, command duration `26.48s`;
+  - run 3: `34 passed in 14.0s`, command duration `24.00s`.
+- Post-summary mock proxy `ECONNREFUSED` messages did not affect assertions or
+  process exit. Every browser run used a newly created review-specific ignored
+  output directory. Only the four exact session directories were removed after
+  their absolute paths were verified. Existing ignored ACL-denied directories
+  were not listed, read, modified or cleaned.
+- Personal Website `npm.cmd run build`: exit code `0`, Vite `3.15s`, command
+  duration `10.14s`, with only existing informational non-module-script
+  warnings. `npm.cmd run verify:build`: exit code `0`, duration `0.42s`.
+- Docker Desktop was confirmed as Linux engine `29.6.2`. The host had reserved
+  the original local Supabase port range, so validation used a disposable
+  repo-external `git archive` of the exact Diary endpoint with only local ports
+  shifted from `5432x` to `5452x`; product source, migrations and repository
+  tests remained the reviewed endpoint. Supabase start applied the full ordered
+  migration set and returned exit code `0`. A clean ordered `supabase db reset`
+  applied all 17 migrations and seed, duration `21.65s`, exit code `0`.
+- The first two standalone upgrade invocations stopped in fixture setup because
+  the exact test parser expected the original `54321` Magic Link while the
+  disposable runtime emitted `54521`: `1 error in 36.33s`, command `38.28s`,
+  exit `1`; and `1 error in 36.04s`, command `37.12s`, exit `1`. Auth returned
+  the OTP successfully and local Mailpit contained the messages, proving this
+  was a harness-port mismatch before the test body. A single disclosed,
+  repo-external review-harness substitution changed only that literal parser
+  port to `54521`; no tracked file was changed. The required true
+  upgrade-over-existing-data regression then passed `1 passed in 70.04s`,
+  command duration `71.12s`, exit code `0`.
+- `python -m mypy src tests`: no issue in 21 source files, duration `18.81s`,
+  exit code `0`.
+- Repository-safe ordered Ticket 03-08 Calendar, History, Create, Revision,
+  Entry Time, migration, owner-auth and mobile Chromium focused set:
+  `62 passed in 105.68s`, command duration `106.84s`, exit code `0`.
+- Complete `python -m pytest -q`: `82 passed, 1 warning in 123.69s`, command
+  duration `124.71s`, exit code `0`; the warning was the existing
+  Starlette/httpx deprecation notice.
+- These Diary runs exercised real local Supabase, PostgreSQL forced RLS,
+  PostgREST, FastAPI, Uvicorn and mobile Chromium. The final passing evidence
+  confirms metadata-only Entry Time, revisions/Original Content/AI obligations,
+  Taipei grouping, microsecond/UUID ordering, current migration data behavior,
+  owner authorization/RLS and Ticket 03-07 seams, but it does not simulate the
+  blocking migration concurrency window or the missing midnight deep-A case.
+- The local stack was stopped without backup. The exact temporary runtime and
+  four exact review-created browser output directories were removed only after
+  absolute-path and junction-target verification. Original repository
+  `node_modules` remained present. Both tracked worktrees were clean again
+  before this record was appended.
+
+#### Reviewed endpoint Actions and audit
+
+- Diary exact endpoint
+  `771a2f910b35d22844a21fb539ca4acdb4a2e8ac`:
+  [Backend checks run 31326459725](https://github.com/oscar940327/diary/actions/runs/31326459725)
+  was `completed/success`; its
+  [test job 93277517152](https://github.com/oscar940327/diary/actions/runs/31326459725/job/93277517152)
+  was `completed/success` at the same head SHA.
+- Personal Website exact endpoint
+  `5000da4a53188e72d31add95762f6ee48f9a59cf`:
+  [pages build and deployment run 31325997137](https://github.com/oscar940327/my-personal-website/actions/runs/31325997137)
+  was `completed/success`; jobs
+  [build 93276356534](https://github.com/oscar940327/my-personal-website/actions/runs/31325997137/job/93276356534),
+  [report-build-status 93276403673](https://github.com/oscar940327/my-personal-website/actions/runs/31325997137/job/93276403673)
+  and
+  [deploy 93276403699](https://github.com/oscar940327/my-personal-website/actions/runs/31325997137/job/93276403699)
+  were all `completed/success` at the same head SHA.
+- At the same Website SHA,
+  [Website checks and Pages run 31325997483](https://github.com/oscar940327/my-personal-website/actions/runs/31325997483)
+  and jobs
+  [build 93276355393](https://github.com/oscar940327/my-personal-website/actions/runs/31325997483/job/93276355393)
+  and
+  [deploy 93276478717](https://github.com/oscar940327/my-personal-website/actions/runs/31325997483/job/93276478717)
+  were all `completed/success`.
+- Fixed-range filename audit found zero `.env` changes and zero Ticket 09
+  files. A high-confidence added-line credential scan found zero matches in
+  either range. Local Supabase synthetic credentials remained runtime-only and
+  were not written to the repositories or this record. No production secret or
+  environment value was introduced.
+- No Ticket 09, Trash/deletion, AI, Queue, RAG or Agent implementation began.
+  The known Note Garden change at Website `index.html:132` was neither modified
+  nor removed. No unrelated-site cleanup, code fix, migration/test/CI change or
+  large refactor was performed. No PR was created.
+- Ticket 08 remains `ready-for-agent`. This review records
+  **CHANGES-REQUIRED** only; it does not begin implementation or Ticket 09.
+  The separate documentation-only commit containing this appended record and
+  its exact-SHA Backend check are reported in the review handoff after that
+  remote gate completes.
