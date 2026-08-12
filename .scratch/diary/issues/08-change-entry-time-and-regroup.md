@@ -2580,3 +2580,321 @@ behavior. No passing local or remote gate can downgrade them.
   `completed/success` before implementation handoff. Ticket 08 remains
   `ready-for-agent`; the next step remains only a new formal fixed-range code
   review, not Ticket 09.
+
+## 2026-08-13 formal fixed-range code review — post-blocker-fix endpoint
+
+### Session contract and verdict
+
+- This was a fresh review-only session under the repository `code-review`
+  skill. Two independent agents reviewed the complete integrated ranges in
+  parallel: Standards and Spec. Neither agent was limited to the endpoint
+  commit or to the blocker-fix subranges. Source inspection was performed in
+  addition to local and exact-SHA CI validation.
+- **Overall: CHANGES-REQUIRED.** Standards is **CHANGES-REQUIRED** and Spec is
+  **CHANGES-REQUIRED**. Passing tests do not offset either source finding.
+- The 2026-08-10 migration/Create High finding is **closed as originally
+  stated**: it was a false positive. The foreign-key DDL lock and actual runner
+  transaction already exclude the alleged backfill/trigger gap, and the new
+  regression demonstrates the two permitted Create outcomes. A separate new
+  migration-bookkeeping atomicity defect is recorded below.
+- The 2026-08-10 Website midnight High finding is **still open**. The pending
+  Save-rebuild takeover path is repaired, but a committed rebuild that has
+  already failed can lose mandatory reading Entry A at the next Taipei
+  midnight.
+- No finding was fixed. No product, migration, test or CI code was modified.
+  No PR was created and Ticket 09 was not started.
+
+### Required preflight
+
+- Before review edits, Diary was `main` with local `HEAD`, `origin/main` and
+  GitHub remote `main` all exactly
+  `c17a9665f43b9e2df124afaee52e3a533b9392f3`; its tracked worktree was clean.
+- Personal Website was `main` with local `HEAD`, `origin/main` and GitHub
+  remote `main` all exactly
+  `6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb`; its tracked worktree was clean.
+- [Website checks and Pages run 31628745480](https://github.com/oscar940327/my-personal-website/actions/runs/31628745480)
+  at Website SHA `6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb`
+  was `completed/success`. Jobs
+  [build 94221809049](https://github.com/oscar940327/my-personal-website/actions/runs/31628745480/job/94221809049)
+  and
+  [deploy 94222143519](https://github.com/oscar940327/my-personal-website/actions/runs/31628745480/job/94222143519)
+  were both `completed/success` at the same head SHA.
+- [Pages build and deployment run 31628744450](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450)
+  at the same Website SHA was `completed/success`. Jobs
+  [build 94221810698](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450/job/94221810698),
+  [report-build-status 94221935941](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450/job/94221935941)
+  and
+  [deploy 94221936079](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450/job/94221936079)
+  were all `completed/success` at that SHA.
+- [Diary Backend checks run 31632679469](https://github.com/oscar940327/diary/actions/runs/31632679469)
+  at implementation SHA `fd41fc547645a483b7f6ff018e7c9d88821b6b4b`
+  and its only returned job
+  [test 94235149515](https://github.com/oscar940327/diary/actions/runs/31632679469/job/94235149515)
+  were `completed/success` at that exact SHA.
+- [Diary Backend checks run 31633246301](https://github.com/oscar940327/diary/actions/runs/31633246301)
+  at final reviewed endpoint
+  `c17a9665f43b9e2df124afaee52e3a533b9392f3` and its only returned job
+  [test 94237067131](https://github.com/oscar940327/diary/actions/runs/31633246301/job/94237067131)
+  were `completed/success` at that exact SHA.
+
+### Fixed ranges and commit inventories
+
+- Diary integrated range
+  `898a6056068ce282e36399d568ea6350bb413f29...c17a9665f43b9e2df124afaee52e3a533b9392f3`:
+  both objects exist; merge-base is exactly the specified base; three-dot diff
+  is non-empty; `git diff --check` passed; **20 commits**:
+  - `5f7362f2ccaf0174dd9e74cf346d4bd20a5a08f4` — `feat: change entry time and regroup history`
+  - `8e7eb600d250919380a52a63a0e977fee7d93101` — `docs: record Ticket 08 fixed-range review`
+  - `189bd18e9f498124f5282fdb37b296b82ef98c82` — `fix: resolve Ticket 08 review blockers`
+  - `994670926ee45a3db781d0280845357fec3838b5` — `docs: record Ticket 08 follow-up review`
+  - `432ed2f353d86359b1810d19772a5bda6870a748` — `fix: close Ticket 08 review blockers`
+  - `662c0b10110daa9c8b7205dd07a3beb0454a428d` — `docs: record Ticket 08 fresh fixed-range review`
+  - `a9ca31125c18177c246799e413e9032542258ca8` — `fix: close latest Ticket 08 history blockers`
+  - `0ebb90d08af18b5afbd26520baade43204b54ddb` — `docs: record latest Ticket 08 review blockers`
+  - `b8d719fddb73d7088a918453b12e4242ce7fbb7e` — `fix: enforce Ticket 08 blocker invariants`
+  - `2db44e7526ab216f4301a1ce9cffcbe10e98935a` — `docs: record Ticket 08 fixed-range review blockers`
+  - `b4d0e434e05ffbbf016b6905fb75fac9520737de` — `Fix Ticket 08 migration upgrade safety`
+  - `003fbcd942b128ad87776b296cd04fca644d4c77` — `docs: record Ticket 08 formal review failure`
+  - `aa07c8f0eba44693dd552a6d4bac09927745e3b3` — `Record Ticket 08 recovery anchor fix`
+  - `118985d5a891b8807be97509ca179557bc78a173` — `Record Ticket 08 exact-SHA checks`
+  - `237e0eac087aabe689ec14d8599f7d7e04221d04` — `docs: preserve Ticket 08 review findings`
+  - `f16909280ccbccc0e61c62e0321bb91d495a742e` — `fix: pin deep History anchor implementation`
+  - `771a2f910b35d22844a21fb539ca4acdb4a2e8ac` — `docs: record Ticket 08 implementation checks`
+  - `3a0a0337b053313ab29bd6030069431deeca1d2e` — `docs: record Ticket 08 fixed-range review`
+  - `fd41fc547645a483b7f6ff018e7c9d88821b6b4b` — `Fix Ticket 08 review blockers`
+  - `c17a9665f43b9e2df124afaee52e3a533b9392f3` — `Record Ticket 08 blocker-fix checks`
+- Diary blocker-fix range
+  `3a0a0337b053313ab29bd6030069431deeca1d2e...c17a9665f43b9e2df124afaee52e3a533b9392f3`:
+  both objects exist; merge-base is exactly the specified base; three-dot diff
+  is non-empty; `git diff --check` passed; **2 commits**:
+  `fd41fc547645a483b7f6ff018e7c9d88821b6b4b` and
+  `c17a9665f43b9e2df124afaee52e3a533b9392f3` as listed above.
+- Personal Website integrated range
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb`:
+  both objects exist; merge-base is exactly the specified base; three-dot diff
+  is non-empty; `git diff --check` passed; **10 commits**:
+  - `3d1e27ea3d78eb20d44b1ef0a63defd64f0dd1b5` — `feat(diary): change entry time and regroup history`
+  - `7898db9691d41f3f418a27250387164531359aac` — `fix: preserve History window after Entry Time changes`
+  - `7a480780aaf8090f0f610be0a04f25a02abb00e3` — `fix(diary): harden Entry Time history recovery`
+  - `18dc585ee8fdcd022778b525520d36be998d08fd` — `feat: add note garden link`
+  - `774787b16b0da864100080ecd5d11a59932be6cf` — `fix(diary): isolate Ticket 08 history ownership`
+  - `ee25f7e0b03a21aaa78b587f2aa19c69b9cdd767` — `fix: close Ticket 08 history blockers`
+  - `6a04e418fc0c3e14fdb14cfa590f39825e83c0d4` — `Fix Ticket 08 history rebuild ownership`
+  - `4f47c1d4c36a78f9c49df8885515e3143d34cbb2` — `Fix Ticket 08 recovery anchor lifecycle`
+  - `5000da4a53188e72d31add95762f6ee48f9a59cf` — `fix: preserve deep History reading anchor`
+  - `6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb` — `Fix midnight deep history recovery`
+- Personal Website blocker-fix range
+  `5000da4a53188e72d31add95762f6ee48f9a59cf...6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb`:
+  both objects exist; merge-base is exactly the specified base; three-dot diff
+  is non-empty; `git diff --check` passed; **1 commit**,
+  `6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb`.
+- The complete three-dot diff and every added line in all four ranges were
+  inspected. The blocker subranges received additional inspection; they did
+  not replace the integrated-range review.
+
+### Standards review — CHANGES-REQUIRED
+
+1. **High — blocking — committed failure followed by midnight is not A/B
+   fail-closed.** Personal Website
+   `src/diary/EntryExperience.tsx:546-605,985-1001` retains React
+   `historyRecovery` after the mutation commits and its first rebuild fails,
+   but clears `committedHistoryRecovery.current` at line 996. If Taipei
+   midnight fires before the owner presses Refresh History, lines 547-579 take
+   the ordinary-root branch; lines 598-605 then retire recovery when B alone is
+   present. A deep reading A outside the fresh root can disappear together
+   with the retry path. The owner-visible result is loss of the reading Entry,
+   visual anchor and recoverability after an otherwise successful Entry Time
+   change. `tests/e2e/continuous-history.spec.ts:1065-1456` covers immediate
+   manual retry, while `:1706-2153` covers midnight takeover only while the Save
+   rebuild is still pending; neither triggers failed Save rebuild followed by
+   midnight. This violates `.scratch/diary/spec.md:47,200`, the Ticket's
+   mandatory independent A/B fail-closed contract, and reliable async
+   ownership/state-transition standards.
+2. **Low — non-blocking — existing hard scope drift, preserved.** Personal
+   Website `index.html:132` adds Note Garden within the integrated Ticket 08
+   range. The owner-visible impact is an unrelated homepage navigation change.
+   It violates `docs/agents/development-workflow.md:3,11,19-20` single-Ticket
+   scope and ADR 0005 existing-site preservation. It was already known and was
+   deliberately neither modified nor cleaned.
+3. **Low — non-blocking — existing Duplicated Code judgment, preserved.**
+   Personal Website `src/diary/EntryExperience.tsx:976-982,1042-1048`
+   duplicates rebuilt-window installation. There is no immediate behavioral
+   owner impact; the maintenance impact is that future fixes can diverge
+   between paths. This is Fowler Duplicated Code. No cleanup was authorized.
+4. **Low — non-blocking — existing Divergent Change judgment, preserved.**
+   Personal Website `src/diary/EntryExperience.tsx:160-275,461-752,893-1058`
+   owns pagination, request ownership, midnight, mutation recovery and visual
+   anchoring. There is no new owner-visible failure beyond finding 1; the
+   maintenance impact is broad change coupling. This is Fowler Divergent
+   Change. No split or refactor was authorized.
+5. **Low — non-blocking — new Duplicated Code judgment.** Diary
+   `tests/system/test_migration_upgrade.py:50-92` duplicates the full
+   Docker/psql argv construction between `_psql` and `_open_psql`. There is no
+   current product impact; future harness changes must remain synchronized.
+   This is Fowler Duplicated Code and is not a blocker.
+
+### Spec review — CHANGES-REQUIRED
+
+1. **High — blocking — migration DDL and migration bookkeeping are not
+   atomic.** Diary
+   `supabase/migrations/20260804120000_change_entry_time_and_stabilize_history.sql:1,556`
+   adds explicit `BEGIN`/`COMMIT`. Pinned Supabase CLI v2.109.1
+   [`MigrationFile.ExecBatch`](https://github.com/supabase/cli/blob/v2.109.1/apps/cli-go/pkg/migration/file.go#L75-L90)
+   queues every parsed migration statement and then the
+   `schema_migrations` insert. Its pinned pgconn v1.14.3 documents that
+   [`ExecBatch` is implicitly transactional only when SQL contains no
+   transaction control](https://github.com/jackc/pgconn/blob/v1.14.3/pgconn.go#L1764-L1765).
+   Migration line 556 therefore commits product DDL before the subsequently
+   queued history insert. Process loss or bookkeeping-insert failure in that
+   interval leaves the schema applied but unrecorded; the next push/retry can
+   reapply non-idempotent DDL and require manual migration repair. Clean resets
+   and the successful concurrency/upgrade paths do not inject this failure.
+   This violates `.scratch/diary/spec.md:363` and
+   `docs/adr/0013-use-expand-contract-database-migrations.md:19`, which require
+   transactional execution and release stop on migration failure.
+2. **High — blocking — failed Save recovery can still lose independent reading
+   Entry A at midnight.** Personal Website
+   `src/diary/EntryExperience.tsx:546-605,985-1001` has the exact trigger,
+   evidence, owner-visible loss and uncovered-test gap stated in Standards
+   finding 1. It violates `.scratch/diary/spec.md:47,200` and the Ticket record
+   at the 2026-08-13 blocker contract: both A and B must be present before a
+   rebuilt window installs and recovery clears; otherwise refresh must fail
+   closed and remain retryable.
+3. **Low — non-blocking — retained known scope creep.** Personal Website
+   `index.html:132` changes the existing site shell with Note Garden. The
+   owner-visible impact and basis are the same as Standards finding 2, plus
+   `.scratch/diary/spec.md:15`. It remains unchanged as required.
+
+### Blocker 1 independent disposition
+
+- **2026-08-10 Blocker 1: CLOSED as originally stated; false positive.**
+  `CREATE TABLE public.entry_history_positions` at migration lines 110-119
+  creates the foreign key to `entries`. PostgreSQL takes the referenced-side
+  `SHARE ROW EXCLUSIVE` lock for this DDL; that mode conflicts with Create's
+  `ROW EXCLUSIVE`, and locks are held to transaction end. Without the new
+  transaction-control statements, the actual CLI queues DDL and migration
+  history in one implicitly transactional batch. Thus a previous-version
+  Create can only commit before the lock and be included by backfill, or wait
+  until migration completion and be captured by the initial-position trigger.
+- Migration lines 127-140 additionally state the exclusion with an explicit
+  `SHARE ROW EXCLUSIVE` immediately before backfill. The deterministic
+  regression at `tests/system/test_migration_upgrade.py:272-545` installs an
+  event trigger and advisory locks, pauses on the post-backfill/pre-trigger
+  `CREATE INDEX`, and observes either pre-lock completion or a waiting Create.
+  It uses no sleep-based race. It then proves History contains the Entry
+  exactly once (`:497`), exactly one current position exists with the full
+  microsecond timestamp (`:512-515`), and subsequent Change Entry Time works
+  (`:517-535`). It does not create its fixture after migration completion.
+- Source and regression inspection found no successful Create-without-position
+  route and no duplicated, lost or misplaced existing position. History v5,
+  Create RPC, Change Entry Time RPC, forced RLS, grants, PostgREST and FastAPI
+  owner boundaries remain semantically unchanged. The new Spec finding is not
+  the old race: it is rollback/bookkeeping safety introduced by the attempted
+  defensive wrapper.
+
+### Blocker 2 independent disposition
+
+- **2026-08-10 Blocker 2: OPEN.** The new midnight path does use the shared
+  `rebuildHistoryWindow` while `committedHistoryRecovery.current` exists, and
+  the pending-rebuild success/failure tests verify deep A around rank 78 plus
+  changed B, one fresh root plus at most four same-snapshot cursor requests,
+  no old cursor, exactly-once A/B, unchanged viewport tolerance, manual anchor
+  ownership, `document.fonts.ready`, and retryable failure.
+- The missing interleaving begins after that Save rebuild has already failed:
+  line 996 removes the only signal used by midnight. Ordinary midnight root
+  then applies its B-only recovery-clear rule. Save and manual Refresh still
+  share the rebuild implementation when the recovery ref survives, but they do
+  not share it in this lifecycle. This is a new concrete trigger for the same
+  mandatory A/B contract, so the blocker is not fully closed.
+
+### Local validation
+
+#### Personal Website
+
+- `npm.cmd run typecheck`: wall `1.0s`, exit `0`.
+- Focused combined deep-A/save/recovery/font/midnight Chromium command:
+  `npm.cmd run test:e2e -- --workers=4 --retries=0 --grep 'committed Entry Time change|Entry Time (save|recovery) rebuild|deep reading Entry|delayed (older|newer) load retires at midnight root|midnight root (success|failure) preserves|delayed root refresh cannot overwrite' --output=test-results/ticket08-formal-review-20260813-focused`:
+  exactly 4 workers, `11 passed in 10.5s`, wall `22.5s`, exit `0`, no retry,
+  hang or post-summary process error.
+- Three independent fresh-process full commands used
+  `npm.cmd run test:e2e -- --workers=4 --retries=0` and separate
+  review-specific ignored output directories:
+  - run 1: exactly 4 workers, `34 passed in 14.4s`, wall `24.5s`, exit `0`;
+  - run 2: exactly 4 workers, `34 passed in 13.7s`, wall `19.9s`, exit `0`;
+  - run 3: exactly 4 workers, `34 passed in 13.5s`, wall `19.7s`, exit `0`.
+- All three full runs had zero retries and no hang. Each emitted only the known
+  post-summary Vite mock-proxy `ECONNREFUSED 127.0.0.1:8000` diagnostic after
+  assertions; no process error followed the summary and every command returned
+  exit `0`.
+- `npm.cmd run build`: Vite `3.14s`, wall `8.2s`, exit `0`, with only existing
+  non-module-script warnings. `npm.cmd run verify:build`: wall `0.6s`, exit
+  `0`.
+- Only the four exact directories created by this review were touched. Their
+  absolute paths were validated under
+  `E:\personal_website\test-results` and then removed. Existing ignored
+  ACL-denied directories were not read, listed or cleaned.
+
+#### Diary
+
+- Docker Desktop was independently confirmed as Linux engine `linux 29.6.2`;
+  the pinned local CLI was v2.109.1. The original ports were available, so no
+  disposable runtime, URL adaptation or credential substitution was used.
+- An initial `npx.cmd supabase db reset --local` correctly reported that the
+  stack was not running. After start, the clean ordered reset completed in wall
+  `33.6s`, exit `0`, applying all 17 migrations and seed. A later manually
+  started full service profile caused Kong-to-Auth `502`/read-timeout
+  precondition failures after internal resets: the first concurrency attempt
+  failed before the race at Auth restore (`1 failed in 99.51s`); the second ran
+  the race but failed HTTP/teardown readiness (`1 failed in 111.84s`). These
+  are preserved as environment failures, not product Reds. The full-profile
+  stack was stopped, and the repository's existing fixture started its exact
+  excluded-service profile on the same original ports; no code changed.
+- Deterministic previous-version concurrent Create regression:
+  `python -m pytest -q --tb=short tests/system/test_migration_upgrade.py::test_previous_version_create_committing_during_history_upgrade_gets_initial_position`:
+  `1 passed in 105.42s`, wall `106.6s`, exit `0`.
+- Existing true upgrade-over-data regression:
+  `python -m pytest -q --tb=short tests/system/test_migration_upgrade.py::test_ordered_upgrade_transforms_unsafe_entry_times_with_immutable_audit`:
+  `1 passed in 102.99s`, wall `104.1s`, exit `0`.
+- `python -m mypy src tests`: no issues in 21 source files, wall `2.1s`, exit
+  `0`.
+- Repository-safe ordered Ticket 03-08 command over
+  `test_calendar_navigation.py`, `test_continuous_history.py`,
+  `test_entry_capture.py`, `test_entry_revisions.py`, `test_entry_time.py`,
+  `test_migration_upgrade.py`, `test_owner_authentication.py`,
+  `test_owner_browser_authentication.py` and `tests/test_health.py`:
+  `64 passed, 1 warning in 182.55s`, wall `183.9s`, exit `0`.
+- `python -m pytest -q --tb=short`: `83 passed, 1 warning in 200.90s`, wall
+  `202.1s`, exit `0`. The warning was the existing Starlette/httpx deprecation.
+  These runs exercised real Supabase, PostgreSQL forced RLS, PostgREST,
+  FastAPI, Uvicorn and mobile Chromium seams. The repository fixture stopped
+  every session-started Supabase container at completion.
+
+### Ticket 03-08 invariant and scope audit
+
+- Source plus validation preserved Entry Time as Entry metadata only:
+  `captured_at`, Original Content and immutable Revision history do not change;
+  no AI obligation is produced, deleted or rescheduled. Asia/Taipei grouping,
+  Calendar counts, microsecond timestamps and descending UUID tie-breaks
+  remain correct. Existing History snapshots neither duplicate nor omit moved
+  Entries.
+- Create/edit/restore contracts remain backward-compatible. FastAPI owner
+  boundaries, PostgreSQL forced RLS, PostgREST owner-token use and direct PATCH
+  denial remain enforced. The explicit transaction did not widen RPC grants or
+  RLS; its defect is the separate bookkeeping commit boundary described above.
+- Apart from the blocking failed-rebuild-then-midnight lifecycle, manual
+  pagination, IntersectionObserver loading, stale `finally` ownership, loading
+  ownership, font timing, Calendar retirement and fresh-process exit showed no
+  regression. Ordinary mutation rebuild remains bounded independently of
+  lifetime/previously loaded count, uses one root plus at most four cursors from
+  one snapshot, and retains the 60-entry ordinary target.
+- Complete added-line audit found no secret, token, credential, Magic Link,
+  production environment value or `.env` file. Local Supabase synthetic values
+  remained runtime-only and are not reproduced in this record.
+- No Ticket 09, Trash/delete, AI Draft, Queue, RAG or Agent work began. Existing
+  Note Garden drift remains exactly as reviewed. No duplicated-code or
+  divergent-change finding was fixed; `EntryExperience` was not split. No
+  unrelated-site cleanup or large refactor occurred.
+- After validation, both tracked worktrees were still clean at their reviewed
+  endpoints. This append is the only review-session file change. The required
+  next action is the docs-only review-record commit and its exact-SHA Backend
+  gate; no implementation or Ticket 09 work is authorized by this record.
