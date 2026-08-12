@@ -2563,3 +2563,20 @@ behavior. No passing local or remote gate can downgrade them.
   commit after the remote gate succeeds. Ticket 08 remains `ready-for-agent`.
   The only next step is a separate fresh formal fixed-range code-review session;
   Ticket 09 remains blocked.
+
+#### Diary exact-SHA blocker-fix completion evidence
+
+- Diary blocker-fix implementation, concurrency regression, Website pin and
+  implementation-record commit
+  `fd41fc547645a483b7f6ff018e7c9d88821b6b4b` was pushed to `main` with only
+  the four scoped files audited above.
+- [Backend checks run 31632679469](https://github.com/oscar940327/diary/actions/runs/31632679469)
+  matched that exact head SHA, attempt 1, and was `completed/success`.
+  Its only returned job,
+  [test 94235149515](https://github.com/oscar940327/diary/actions/runs/31632679469/job/94235149515),
+  matched the same head SHA and was `completed/success`.
+- This documentation-only completion commit is the final Diary endpoint. Its
+  own exact-SHA Backend run and every returned job are required to reach
+  `completed/success` before implementation handoff. Ticket 08 remains
+  `ready-for-agent`; the next step remains only a new formal fixed-range code
+  review, not Ticket 09.
