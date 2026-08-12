@@ -1,3 +1,5 @@
+begin;
+
 grant update (entry_at, updated_at)
     on table public.entries
     to diary_edit_mutator;
@@ -121,6 +123,10 @@ create table public.entry_history_positions (
 
 comment on table public.entry_history_positions is
     'Snapshot-visible Entry Time positions; not Original Content revisions.';
+
+-- Keep the backfill and trigger installation in one explicit Create exclusion
+-- window, including when this migration runs beside the previous application.
+lock table public.entries in share row exclusive mode;
 
 insert into public.entry_history_positions (
     entry_id,
@@ -546,3 +552,5 @@ comment on function public.list_diary_history_v5(
 
 comment on role diary_edit_mutator is
     'No-login owner-scoped RLS principal for controlled atomic Entry mutations.';
+
+commit;

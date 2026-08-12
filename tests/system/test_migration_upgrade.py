@@ -13,6 +13,9 @@ import jwt
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_SCHEMA_VERSION = "20260805120000"
+HISTORY_POSITION_PREVIOUS_SCHEMA_VERSION = "20260803120000"
+MIGRATION_PAUSE_LOCK = 808_041_200
+CREATE_PAUSE_LOCK = 808_041_201
 TRANSFORMATION_MIGRATION = (
     REPOSITORY_ROOT
     / "supabase"
@@ -64,6 +67,70 @@ def _psql(statement: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def _open_psql() -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [
+            "docker",
+            "exec",
+            "--interactive",
+            "supabase_db_diary",
+            "psql",
+            "--username",
+            "postgres",
+            "--dbname",
+            "postgres",
+            "--set",
+            "ON_ERROR_STOP=1",
+        ],
+        cwd=REPOSITORY_ROOT,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _start_migration_upgrade() -> subprocess.Popen[str]:
+    return subprocess.Popen(
+        [_supabase_executable(), "migration", "up", "--local"],
+        cwd=REPOSITORY_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+
+
+def _wait_for_database_condition(
+    statement: str,
+    *,
+    timeout_seconds: float = 15,
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    last_result = "database condition was not queried"
+    while time.monotonic() < deadline:
+        result = _psql(statement)
+        last_result = f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        if _database_condition_is_true(result):
+            return
+        time.sleep(0.05)
+    raise AssertionError(last_result)
+
+
+def _database_condition_is_true(
+    result: subprocess.CompletedProcess[str],
+) -> bool:
+    return result.returncode == 0 and any(
+        line.strip() == "1" for line in result.stdout.splitlines()
+    )
+
+
+def _stop_process(process: subprocess.Popen[str] | None) -> None:
+    if process is None or process.poll() is not None:
+        return
+    process.kill()
+    process.communicate(timeout=10)
 
 
 def _owner_headers(access_token: str) -> dict[str, str]:
@@ -200,6 +267,280 @@ def _rows(
     )
     assert response.status_code == 200, response.text
     return cast(list[dict[str, object]], response.json())
+
+
+def test_previous_version_create_committing_during_history_upgrade_gets_initial_position(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    reset_previous = _supabase_cli(
+        "db",
+        "reset",
+        "--local",
+        "--version",
+        HISTORY_POSITION_PREVIOUS_SCHEMA_VERSION,
+    )
+    assert reset_previous.returncode == 0, reset_previous.stderr
+
+    lock_controller: subprocess.Popen[str] | None = None
+    previous_create: subprocess.Popen[str] | None = None
+    upgrade: subprocess.Popen[str] | None = None
+    try:
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
+        _assert_owner_registry(
+            local_supabase,
+            owner_access_token,
+        )
+
+        pause_migration = _psql(
+            f"""
+            create function public.ticket08_pause_history_upgrade()
+            returns event_trigger
+            language plpgsql
+            as $$
+            begin
+                if current_query() ilike
+                    '%entry_history_positions_one_current_idx%'
+                then
+                    perform pg_advisory_xact_lock({MIGRATION_PAUSE_LOCK});
+                end if;
+            end;
+            $$;
+
+            create event trigger ticket08_pause_history_upgrade
+            on ddl_command_start
+            when tag in ('CREATE INDEX')
+            execute function public.ticket08_pause_history_upgrade();
+            """
+        )
+        assert pause_migration.returncode == 0, pause_migration.stderr
+
+        lock_controller = _open_psql()
+        assert lock_controller.stdin is not None
+        lock_controller.stdin.write(
+            "set application_name = 'ticket08_lock_controller';\n"
+            f"select pg_advisory_lock({MIGRATION_PAUSE_LOCK});\n"
+            f"select pg_advisory_lock({CREATE_PAUSE_LOCK});\n"
+        )
+        lock_controller.stdin.flush()
+        _wait_for_database_condition(
+            f"""
+            select (count(*) = 2)::integer
+            from pg_catalog.pg_locks
+            join pg_catalog.pg_stat_activity
+              on pg_stat_activity.pid = pg_locks.pid
+            where pg_stat_activity.application_name =
+                    'ticket08_lock_controller'
+              and pg_locks.locktype = 'advisory'
+              and pg_locks.objid in (
+                    {MIGRATION_PAUSE_LOCK},
+                    {CREATE_PAUSE_LOCK}
+              )
+              and pg_locks.granted;
+            """
+        )
+
+        upgrade = _start_migration_upgrade()
+        _wait_for_database_condition(
+            f"""
+            select count(*)
+            from pg_catalog.pg_locks
+            where pg_locks.locktype = 'advisory'
+              and pg_locks.objid = {MIGRATION_PAUSE_LOCK}
+              and not pg_locks.granted;
+            """
+        )
+
+        previous_create = _open_psql()
+        assert previous_create.stdin is not None
+        previous_create.stdin.write(
+            "begin;\n"
+            "set application_name = 'ticket08_previous_create';\n"
+            "set local role authenticated;\n"
+            "select set_config(\n"
+            "  'request.jwt.claims',\n"
+            f"  '{{\"sub\":\"{OWNER_ID}\",\"role\":\"authenticated\"}}',\n"
+            "  true\n"
+            ");\n"
+            "select id from public.create_diary_entry(\n"
+            "  'Concurrent previous-version Create.',\n"
+            "  '2088-03-04T05:06:07.123456+08:00'::timestamptz,\n"
+            "  'upgrade-concurrent-create'\n"
+            ");\n"
+            f"select pg_advisory_lock({CREATE_PAUSE_LOCK});\n"
+            "commit;\n"
+            "\\q\n"
+        )
+        previous_create.stdin.flush()
+
+        _wait_for_database_condition(
+            f"""
+            select (
+                exists (
+                    select 1
+                    from pg_catalog.pg_locks
+                    join pg_catalog.pg_stat_activity
+                      on pg_stat_activity.pid = pg_locks.pid
+                    where pg_stat_activity.application_name =
+                            'ticket08_previous_create'
+                      and pg_locks.locktype = 'advisory'
+                      and pg_locks.objid = {CREATE_PAUSE_LOCK}
+                      and not pg_locks.granted
+                )
+                or exists (
+                    select 1
+                    from pg_catalog.pg_locks
+                    join pg_catalog.pg_stat_activity
+                      on pg_stat_activity.pid = pg_locks.pid
+                    where pg_stat_activity.application_name =
+                            'ticket08_previous_create'
+                      and pg_locks.relation = 'public.entries'::regclass
+                      and pg_locks.mode = 'RowExclusiveLock'
+                      and not pg_locks.granted
+                )
+            )::integer;
+            """
+        )
+
+        create_reached_upgrade_gap = _database_condition_is_true(
+            _psql(
+                f"""
+                select count(*)
+                from pg_catalog.pg_locks
+                join pg_catalog.pg_stat_activity
+                  on pg_stat_activity.pid = pg_locks.pid
+                where pg_stat_activity.application_name =
+                        'ticket08_previous_create'
+                  and pg_locks.locktype = 'advisory'
+                  and pg_locks.objid = {CREATE_PAUSE_LOCK}
+                  and not pg_locks.granted;
+                """
+            )
+        )
+
+        lock_controller.stdin.write(
+            f"select pg_advisory_unlock({CREATE_PAUSE_LOCK});\n"
+        )
+        lock_controller.stdin.flush()
+        if create_reached_upgrade_gap:
+            previous_create_stdout, previous_create_stderr = (
+                previous_create.communicate(timeout=30)
+            )
+            assert previous_create.returncode == 0, (
+                previous_create_stdout,
+                previous_create_stderr,
+            )
+
+        lock_controller.stdin.write(
+            f"select pg_advisory_unlock({MIGRATION_PAUSE_LOCK});\n"
+        )
+        lock_controller.stdin.flush()
+
+        upgrade_stdout, upgrade_stderr = upgrade.communicate(timeout=120)
+        assert upgrade.returncode == 0, (upgrade_stdout, upgrade_stderr)
+        if not create_reached_upgrade_gap:
+            previous_create_stdout, previous_create_stderr = (
+                previous_create.communicate(timeout=30)
+            )
+            assert previous_create.returncode == 0, (
+                previous_create_stdout,
+                previous_create_stderr,
+            )
+
+        no_pause_trigger = _psql(
+            """
+            drop event trigger ticket08_pause_history_upgrade;
+            drop function public.ticket08_pause_history_upgrade();
+            """
+        )
+        assert no_pause_trigger.returncode == 0, no_pause_trigger.stderr
+
+        _wait_for_database_condition(
+            """
+            select (count(*) = 0)::integer
+            from pg_catalog.pg_locks
+            join pg_catalog.pg_stat_activity
+              on pg_stat_activity.pid = pg_locks.pid
+            where pg_stat_activity.application_name =
+                    'ticket08_previous_create';
+            """
+        )
+
+        created_entries = _rows(
+            local_supabase,
+            owner_access_token,
+            "entries",
+            "id,entry_at,idempotency_key,current_revision_id,created_at",
+            order="id.asc",
+        )
+        concurrent_entry = next(
+            entry
+            for entry in created_entries
+            if entry["idempotency_key"] == "upgrade-concurrent-create"
+        )
+        concurrent_entry_id = cast(str, concurrent_entry["id"])
+
+        history = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(owner_access_token),
+            params={"anchor_date": "2088-03-04", "limit": 50},
+            timeout=10,
+        )
+        assert history.status_code == 200, history.text
+        history_ids = [
+            entry["id"]
+            for group in history.json()["groups"]
+            for entry in group["entries"]
+        ]
+        assert history_ids.count(concurrent_entry_id) == 1
+
+        positions = _rows(
+            local_supabase,
+            owner_access_token,
+            "entry_history_positions",
+            "entry_id,entry_at,valid_from_xid,valid_until_xid",
+            order="entry_id.asc,valid_from_xid.asc",
+        )
+        current_positions = [
+            position
+            for position in positions
+            if position["entry_id"] == concurrent_entry_id
+            and position["valid_until_xid"] is None
+        ]
+        assert len(current_positions) == 1
+        assert current_positions[0]["entry_at"] == (
+            "2088-03-03T21:06:07.123456+00:00"
+        )
+
+        change = httpx.post(
+            (
+                f"{local_supabase.api_url}/rest/v1/rpc/"
+                "change_diary_entry_time"
+            ),
+            headers=_postgrest_headers(
+                local_supabase,
+                owner_access_token,
+            ),
+            json={
+                "p_entry_id": concurrent_entry_id,
+                "p_entry_at": "2088-03-05T06:07:08.654321+08:00",
+            },
+            timeout=10,
+        )
+        assert change.status_code == 200, change.text
+        changed_rows = cast(list[dict[str, object]], change.json())
+        assert len(changed_rows) == 1
+        assert changed_rows[0]["id"] == concurrent_entry_id
+    finally:
+        _stop_process(previous_create)
+        _stop_process(upgrade)
+        _stop_process(lock_controller)
+        restore = _supabase_cli("db", "reset", "--local")
+        assert restore.returncode == 0, restore.stderr
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
 
 
 def test_ordered_upgrade_transforms_unsafe_entry_times_with_immutable_audit(

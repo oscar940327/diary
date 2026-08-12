@@ -2369,3 +2369,197 @@ behavior. No passing local or remote gate can downgrade them.
   The separate documentation-only commit containing this appended record and
   its exact-SHA Backend check are reported in the review handoff after that
   remote gate completes.
+
+### 2026-08-13 - Formal blocker-fix implementation
+
+#### Boundary, preflight and starting evidence
+
+- This was a new implementation session limited to the two High findings in
+  the 2026-08-10 formal fixed-range review. It used the complete `implement`,
+  `tdd` and `diagnosing-bugs` instructions and did not invoke or begin a formal
+  code review. The review's non-blocking duplicated-code, divergent-change and
+  Note Garden findings were deliberately left unchanged.
+- Diary began on `main` with local `HEAD`, `origin/main` and GitHub remote
+  `main` all exactly
+  `3a0a0337b053313ab29bd6030069431deeca1d2e`; its tracked worktree was clean.
+  Personal Website began on `main` with all three refs exactly
+  `5000da4a53188e72d31add95762f6ee48f9a59cf`; its tracked worktree was clean.
+- Both starting SHAs were contained by remote `main`. Diary
+  [Backend checks run 31405805510](https://github.com/oscar940327/diary/actions/runs/31405805510)
+  and its
+  [test job 93511724182](https://github.com/oscar940327/diary/actions/runs/31405805510/job/93511724182)
+  were `completed/success` at the exact starting Diary SHA. Website starting
+  runs
+  [31325997137](https://github.com/oscar940327/my-personal-website/actions/runs/31325997137)
+  and
+  [31325997483](https://github.com/oscar940327/my-personal-website/actions/runs/31325997483),
+  including every returned build/report/deploy job, were
+  `completed/success` at the exact starting Website SHA.
+- The complete repository instructions, development workflow, domain, issue
+  tracker, `CONTEXT.md`, product spec, full Ticket 08 record, all 15 ADRs and
+  complete product/migration/test/CI context for both findings were read before
+  implementation.
+
+#### Blocker 2 root cause, Red and implementation
+
+- Root cause: the Taipei-midnight today-anchor path in
+  `EntryExperience.tsx` directly installed a fresh cursorless root containing
+  changed Entry B and cleared committed recovery. It bypassed the shared
+  bounded `rebuildHistoryWindow`, did not require deep reading Entry A, and did
+  not restore A's manual anchor. B could therefore survive while A disappeared
+  and retryable recovery was retired.
+- The two existing midnight root success and failure/retry journeys were
+  expanded into combined deep-A regressions. A is the actual first-visible
+  reading Entry around rank 78, absent from the fresh initial 60; B is a
+  distinct changed Entry already in the fresh root. The fixture requires fresh
+  newer traversal for B and older traversal for A, enforces fresh snapshot
+  cursors, the fixed root-plus-four-request budget, exact-once A/B rendering,
+  and retains the original `toBeCloseTo(..., 0)` viewport tolerance.
+- Two preliminary test-coordination attempts timed out waiting for an animation
+  frame while the test clock was paused (`2 failed`, wall `48.2s`, exit `1`;
+  then `2 failed`, wall `36.59s`, exit `1`). They never reached the reviewed
+  product assertion and are not counted as product Red evidence.
+- Valid reviewed-endpoint Red command:
+  `npm.cmd run test:e2e -- --workers=4 --retries=0 --grep "midnight root .* preserves a committed Entry Time rebuild" --output=test-results/ticket08-blocker-fix-red3-midnight-deep-a`.
+  It ran two Chromium tests with two workers and zero retries; both failed on
+  the intended assertion, expected A count `1` but received `0`. Playwright
+  reported `6.5s`, command wall time was `19.16s`, exit code `1`, with no hang.
+- Fix: `HistoryWindow` now carries its root `anchorDate`, and the midnight
+  `refreshHistory` path captures committed recovery and calls the same
+  `rebuildHistoryWindow` used by Save and `Refresh History`. It installs and
+  clears recovery only after the shared final guard has found both independent
+  mandatory concepts A and B. Any missing Entry fails closed and preserves the
+  same retryable recovery. Ordinary cursorless refresh behavior is unchanged.
+- The shared runner still has exactly one fresh cursorless root plus at most
+  four cursored requests, caps ordinary reconstruction at 60 Entries, never
+  derives budget from lifetime or loaded count, never reuses an old snapshot
+  cursor, and preserves manual anchor ownership plus
+  `document.fonts.ready` timing. Manual newer/older pagination,
+  IntersectionObserver, stale-finally/loading ownership and Calendar recovery
+  retirement remained green.
+- Focused Green for the exact two tests: `2 passed in 3.2s`, two workers, wall
+  `12.72s`, exit `0`. The broader deep-A/Save/recovery/font/midnight/root/stale
+  set ran ten Chromium tests with exactly four workers: `10 passed in 7.0s`,
+  wall `16.19s`, exit `0`.
+
+#### Blocker 1 diagnosis, regression and defensive implementation
+
+- The deterministic regression resets to immediately previous schema
+  `20260803120000`, installs a test-only PostgreSQL DDL event trigger, and uses
+  advisory locks to pause the real `supabase migration up --local` at the
+  post-backfill `CREATE INDEX`, before initial-position trigger installation.
+  It then starts a previous-version `create_diary_entry` transaction and
+  observes actual granted/waiting PostgreSQL relation locks. No sleep or
+  probabilistic race selects the interleaving.
+- The first environment attempt stopped in fixture setup because the sandboxed
+  Supabase CLI could not open its Windows temporary path (`EPERM`; `1 error in
+  3.07s`, wall `5.13s`, exit `1`). Starting the unchanged local stack outside
+  that filesystem sandbox succeeded on the repository's original ports; no
+  disposable runtime, port rewrite or tracked harness adaptation was needed.
+  A first helper revision then misread psql's tabular `count = 1` output and
+  timed out (`1 failed in 83.89s`, wall `84.95s`, exit `1`). Neither setup
+  failure is represented as a product Red.
+- Crucially, two corrected executions against the unmodified reviewed
+  migration were Green: the initial lock-coordinated version passed
+  `1 passed in 70.87s` (wall `71.91s`, exit `0`), and the stricter event-trigger
+  post-backfill/pre-trigger version passed `1 passed in 87.07s` (wall `88.58s`,
+  exit `0`). The latter observed that previous-version Create waited rather
+  than entering the alleged gap.
+- Diagnosis: `CREATE TABLE entry_history_positions` adds a foreign key to
+  `entries`, which takes a `SHARE ROW EXCLUSIVE` lock that conflicts with
+  Create's `ROW EXCLUSIVE` lock. The Supabase runner retains that lock through
+  the migration. Therefore the reviewed endpoint already admitted only the two
+  safe states: a Create committed before the lock is included by backfill, or
+  a Create waiting behind the migration is captured by the installed trigger.
+  The review's third state could not be reproduced. With owner approval, this
+  finding is recorded as a review false positive; no failing product Red was
+  fabricated.
+- A first defensive naked `LOCK TABLE` attempt correctly failed before any
+  test body because PostgreSQL requires an explicit transaction block
+  (`LOCK TABLE can only be used in transaction blocks`; pytest setup
+  `1 error in 27.13s`, wall `28.69s`, exit `1`). The final migration explicitly
+  wraps its complete contents in `BEGIN`/`COMMIT` and takes
+  `SHARE ROW EXCLUSIVE` on `entries` immediately before backfill. This makes the
+  Create-exclusion contract independent of the foreign key's implicit lock and
+  visibly holds it through backfill, indexes, RLS and trigger installation.
+- A clean ordered reset with the final SQL applied all 17 migrations and seed
+  in wall `23.41s`, exit `0`. The same deterministic concurrency regression
+  then passed `1 passed in 73.70s` (wall `75.35s`, exit `0`): History contained
+  the concurrent Entry exactly once, it had exactly one current position with
+  the microsecond timestamp, and subsequent Change Entry Time succeeded. The
+  existing true upgrade-over-existing-data regression passed
+  `1 passed in 71.99s` (wall `73.13s`, exit `0`).
+- The transaction and explicit lock do not modify data semantics, RPC grants,
+  forced RLS or owner boundaries. Backfill remains one insert from existing
+  Entries, and the trigger still handles later Creates; no history position is
+  lost, duplicated or reordered. Entry Time remains metadata-only and no
+  revision or AI obligation is created, deleted or rescheduled.
+
+#### Website validation, commit and exact-SHA gate
+
+- `npm.cmd run typecheck`: wall `2.46s`, exit `0`.
+- Three independent fresh-process commands
+  `npm.cmd run test:e2e -- --workers=4 --retries=0` each ran all 34 Chromium
+  tests with exactly four workers, zero retries, no hang and exit `0`:
+  - run 1: Playwright `34 passed in 12.9s`, wall `23.59s`;
+  - run 2: Playwright `34 passed in 12.9s`, wall `21.86s`;
+  - run 3: Playwright `34 passed in 13.0s`, wall `23.27s`.
+- Each run emitted only the known post-summary Vite mock-proxy
+  `ECONNREFUSED 127.0.0.1:8000` message after assertions; there was no retry,
+  hang or post-summary process error and every command exited `0`.
+- `npm.cmd run build`: Vite `2.58s`, wall `8.05s`, exit `0`, with only existing
+  non-module-script warnings. `npm.cmd run verify:build`: wall `0.40s`, exit
+  `0`.
+- Seventeen implementation-specific ignored Playwright output directories were
+  created across Red/debug/Green runs. Each exact absolute path was validated
+  and only those directories were removed. Existing ignored ACL-denied
+  directories were not read, listed, changed or cleaned.
+- Personal Website commit
+  `6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb` changed only
+  `src/diary/EntryExperience.tsx` and
+  `tests/e2e/continuous-history.spec.ts`, was pushed to `main`, and became the
+  Diary CI exact pin only after all Website gates succeeded.
+- [Website checks and Pages run 31628745480](https://github.com/oscar940327/my-personal-website/actions/runs/31628745480)
+  was `completed/success` at that exact SHA. Jobs
+  [build 94221809049](https://github.com/oscar940327/my-personal-website/actions/runs/31628745480/job/94221809049)
+  and
+  [deploy 94222143519](https://github.com/oscar940327/my-personal-website/actions/runs/31628745480/job/94222143519)
+  were both `completed/success`.
+- [pages build and deployment run 31628744450](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450)
+  was also `completed/success` at the same exact SHA. Jobs
+  [build 94221810698](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450/job/94221810698),
+  [report-build-status 94221935941](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450/job/94221935941)
+  and
+  [deploy 94221936079](https://github.com/oscar940327/my-personal-website/actions/runs/31628744450/job/94221936079)
+  were all `completed/success`.
+
+#### Diary complete validation and scope audit
+
+- Docker Desktop Linux engine was confirmed as `linux 29.6.2`. The final clean
+  ordered Supabase reset, focused concurrency regression and existing true
+  upgrade regression are recorded above, all on the original local ports.
+- `python -m mypy src tests`: no issues in 21 source files, wall `1.81s`, exit
+  `0`.
+- Repository-safe ordered Ticket 03-08 Calendar, History, Create, Revision,
+  Entry Time, migration, owner-auth and mobile Chromium/real-API set:
+  `64 passed in 152.79s`, wall `153.82s`, exit `0`.
+- Complete `python -m pytest -q`: `83 passed, 1 warning in 166.59s`, wall
+  `167.51s`, exit `0`. The warning is the existing Starlette/httpx deprecation
+  notice. These runs exercised real Supabase, PostgreSQL forced RLS, PostgREST,
+  FastAPI, Uvicorn and mobile Chromium.
+- Diary implementation changes are limited to
+  `supabase/migrations/20260804120000_change_entry_time_and_stabilize_history.sql`,
+  `tests/system/test_migration_upgrade.py`, the exact Website pin in
+  `.github/workflows/ci.yml`, and this appended Ticket 08 record. Website
+  changes are limited to the two files named above. `git diff --check` passed.
+- Added-line audit found no secret, token, credential, Magic Link, production
+  environment value or `.env` file. Local Supabase synthetic credentials were
+  runtime-only and are not stored here. No Ticket 09, Trash/delete, AI Draft,
+  Queue, RAG or Agent work began. Existing Note Garden scope drift was neither
+  changed nor cleaned. No unrelated-site cleanup, non-blocking duplicated-code
+  fix, `EntryExperience` split or large refactor occurred. No PR was created.
+- The scoped Diary implementation/CI-pin commit and its exact-SHA Backend run
+  and job links will be appended in a separate documentation-only completion
+  commit after the remote gate succeeds. Ticket 08 remains `ready-for-agent`.
+  The only next step is a separate fresh formal fixed-range code-review session;
+  Ticket 09 remains blocked.
