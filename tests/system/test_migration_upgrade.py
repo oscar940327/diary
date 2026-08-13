@@ -14,6 +14,7 @@ import jwt
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_SCHEMA_VERSION = "20260805120000"
 HISTORY_POSITION_PREVIOUS_SCHEMA_VERSION = "20260803120000"
+HISTORY_POSITION_SCHEMA_VERSION = "20260804120000"
 MIGRATION_PAUSE_LOCK = 808_041_200
 CREATE_PAUSE_LOCK = 808_041_201
 TRANSFORMATION_MIGRATION = (
@@ -267,6 +268,157 @@ def _rows(
     )
     assert response.status_code == 200, response.text
     return cast(list[dict[str, object]], response.json())
+
+
+def test_history_upgrade_rolls_back_when_cli_bookkeeping_fails_and_retries(
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    reset_previous = _supabase_cli(
+        "db",
+        "reset",
+        "--local",
+        "--version",
+        HISTORY_POSITION_PREVIOUS_SCHEMA_VERSION,
+    )
+    assert reset_previous.returncode == 0, reset_previous.stderr
+
+    try:
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
+        _assert_owner_registry(local_supabase, owner_access_token)
+        existing_entry = _rpc_create(
+            local_supabase,
+            owner_access_token,
+            content="Bookkeeping rollback preserves this Entry.",
+            entry_at="2088-03-04T05:06:07.123456+08:00",
+            idempotency_key="bookkeeping-rollback-existing-entry",
+        )
+        existing_entry_id = cast(str, existing_entry["id"])
+
+        inject_bookkeeping_failure = _psql(
+            f"""
+            create function public.ticket08_fail_migration_bookkeeping()
+            returns trigger
+            language plpgsql
+            as $$
+            begin
+                if new.version = '{HISTORY_POSITION_SCHEMA_VERSION}' then
+                    raise exception 'forced Ticket 08 bookkeeping failure';
+                end if;
+                return new;
+            end;
+            $$;
+
+            create trigger ticket08_fail_migration_bookkeeping
+            before insert on supabase_migrations.schema_migrations
+            for each row
+            execute function public.ticket08_fail_migration_bookkeeping();
+            """
+        )
+        assert inject_bookkeeping_failure.returncode == 0, (
+            inject_bookkeeping_failure.stderr
+        )
+
+        failed_upgrade = _supabase_cli("migration", "up", "--local")
+        assert failed_upgrade.returncode != 0, failed_upgrade.stdout
+
+        rolled_back = _psql(
+            f"""
+            select (
+                (
+                    select count(*) = 0
+                    from supabase_migrations.schema_migrations
+                    where version = '{HISTORY_POSITION_SCHEMA_VERSION}'
+                )
+                and to_regclass('public.entry_history_positions') is null
+                and to_regprocedure(
+                    'public.change_diary_entry_time(uuid,text)'
+                ) is null
+                and to_regprocedure(
+                    'public.list_diary_history_v5(date,text,timestamptz,uuid,text,integer)'
+                ) is null
+                and not has_column_privilege(
+                    'diary_edit_mutator',
+                    'public.entries',
+                    'entry_at',
+                    'update'
+                )
+                and (
+                    select count(*) = 1
+                    from public.entries
+                    where id = '{existing_entry_id}'::uuid
+                      and idempotency_key =
+                          'bookkeeping-rollback-existing-entry'
+                      and entry_at =
+                          '2088-03-04T05:06:07.123456+08:00'::timestamptz
+                )
+                and (
+                    select count(*) = 1
+                    from public.entry_revisions
+                    where entry_id = '{existing_entry_id}'::uuid
+                      and original_content =
+                          'Bookkeeping rollback preserves this Entry.'
+                )
+                and (
+                    select count(*) = 1
+                    from public.ai_processing
+                    join public.entry_revisions
+                      on entry_revisions.id =
+                          ai_processing.entry_revision_id
+                    where entry_revisions.entry_id =
+                        '{existing_entry_id}'::uuid
+                )
+            )::integer;
+            """
+        )
+        assert _database_condition_is_true(rolled_back), (
+            rolled_back.stdout,
+            rolled_back.stderr,
+        )
+
+        remove_bookkeeping_failure = _psql(
+            """
+            drop trigger ticket08_fail_migration_bookkeeping
+                on supabase_migrations.schema_migrations;
+            drop function public.ticket08_fail_migration_bookkeeping();
+            """
+        )
+        assert remove_bookkeeping_failure.returncode == 0, (
+            remove_bookkeeping_failure.stderr
+        )
+
+        retry = _supabase_cli("migration", "up", "--local")
+        assert retry.returncode == 0, (retry.stdout, retry.stderr)
+        safely_retried = _psql(
+            f"""
+            select (
+                (
+                    select count(*) = 1
+                    from supabase_migrations.schema_migrations
+                    where version = '{HISTORY_POSITION_SCHEMA_VERSION}'
+                )
+                and to_regclass('public.entry_history_positions') is not null
+                and (
+                    select count(*) = 1
+                    from public.entry_history_positions
+                    where entry_id = '{existing_entry_id}'::uuid
+                      and valid_until_xid is null
+                      and entry_at =
+                          '2088-03-04T05:06:07.123456+08:00'::timestamptz
+                )
+            )::integer;
+            """
+        )
+        assert _database_condition_is_true(safely_retried), (
+            safely_retried.stdout,
+            safely_retried.stderr,
+        )
+    finally:
+        restore = _supabase_cli("db", "reset", "--local")
+        assert restore.returncode == 0, restore.stderr
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
 
 
 def test_previous_version_create_committing_during_history_upgrade_gets_initial_position(

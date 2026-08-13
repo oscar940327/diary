@@ -2898,3 +2898,127 @@ behavior. No passing local or remote gate can downgrade them.
   endpoints. This append is the only review-session file change. The required
   next action is the docs-only review-record commit and its exact-SHA Backend
   gate; no implementation or Ticket 09 work is authorized by this record.
+
+### 2026-08-13 - Formal-review blocking findings implementation
+
+#### Boundary and preflight
+
+- This implementation session was limited to the two High blockers from the
+  2026-08-13 formal fixed-range review: migration/bookkeeping atomicity and a
+  failed committed Save rebuild followed by Taipei midnight. The closed
+  2026-08-10 foreign-key/Create race finding remains closed as a false
+  positive. Existing non-blocking duplicated-code, divergent-change and Note
+  Garden findings were deliberately not changed.
+- Diary began on `main` with local `HEAD`, `origin/main` and GitHub remote
+  `main` all exactly
+  `ce8cc5dfaa6216d7e044e7035a5a7de4bf8b0b0d`; Personal Website began on
+  `main` with all three refs exactly
+  `6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb`. Both tracked worktrees were
+  clean. No stash, reset, checkout, user-file cleanup or PR was used.
+
+#### Red to minimal Green evidence
+
+- Diary Red used pinned Supabase CLI v2.109.1 against real PostgreSQL. A
+  deterministic trigger rejected only the
+  `20260804120000` `schema_migrations` insert after an existing owner Entry had
+  been created at the previous schema. The CLI failed and the PostgreSQL
+  rollback assertion returned `0`, proving product DDL/data had committed
+  independently of bookkeeping. The product Red run was `1 failed in
+  105.07s`, wall `106.19s`, exit `1`; an earlier harness-only run was corrected
+  after confirming that this CLI version does not forward the injected
+  exception text to stderr.
+- Diary minimal Green removes the migration's top-level `BEGIN`/`COMMIT` and
+  retains the explicit `LOCK TABLE public.entries IN SHARE ROW EXCLUSIVE MODE`
+  inside one `DO` statement, as PostgreSQL otherwise rejects top-level `LOCK`
+  outside a transaction block. Supabase CLI now owns one implicit transaction
+  containing every migration statement and its bookkeeping insert. The new
+  regression proved schema, grants, functions, backfill and bookkeeping all
+  rolled back while the existing Entry, immutable Revision and processing row
+  remained unchanged; after removing the injected failure, the same migration
+  retried safely. Green was `1 passed in 69.64s`, wall `70.66s`, exit `0`.
+- Website Red added two owner-visible Playwright cases beginning only after
+  the Entry Time mutation committed and its Save rebuild failed. The successful
+  midnight path removed deep reading Entry A while clearing recovery, and the
+  failure path showed midnight did not enter the shared A/B rebuild. The
+  product Red was `2 failed`, wall `20.50s`, exit `1`.
+- Website minimal Green retains committed recovery ownership after the Save
+  rebuild failure. Midnight and manual Refresh continue to call the same
+  `rebuildHistoryWindow`; recovery is cleared only after that implementation
+  finds independent reading A and changed active B. A missing A or B throws,
+  fails closed and remains retryable. Explicit Calendar navigation separately
+  retires the old-date recovery ref. The two new cases passed `2 passed in
+  3.6s`, wall `14.92s`, exit `0`.
+
+#### Preserved contracts and local validation
+
+- Docker Desktop was confirmed as Linux engine `29.6.2`; the repository CLI
+  remained pinned at v2.109.1. A clean ordered reset applied all 17 migrations
+  and seed in wall `25.82s`, exit `0`.
+- The new bookkeeping rollback/retry regression passed as stated above. The
+  retained deterministic concurrent previous-version Create regression passed
+  `1 passed in 70.12s`, wall `71.12s`, exit `0`, proving the explicit lock is
+  held through backfill and trigger installation. The true upgrade-over-
+  existing-data regression passed `1 passed in 70.10s`, wall `71.24s`, exit
+  `0`. RLS, grants, PostgREST, FastAPI and previous-version contracts were not
+  widened or rewritten.
+- `python -m mypy src tests` found no issues in 21 source files, wall `3.71s`,
+  exit `0`. The repository-safe ordered Ticket 03-08 set passed `65 passed, 1
+  warning in 198.17s`, wall `199.65s`, exit `0`. The independent full suite
+  passed `84 passed, 1 warning in 211.76s`, wall `212.85s`, exit `0`. The one
+  warning was the existing Starlette/httpx deprecation. These runs exercised
+  real Supabase, forced PostgreSQL RLS, PostgREST, FastAPI, Uvicorn and mobile
+  Chromium seams.
+- Website typecheck passed. The final focused deep-A/save/recovery/font/
+  midnight/Calendar ownership set used four workers and zero retries and
+  passed `14 passed in 9.1s`, wall `15.32s`, exit `0`. It preserved one fresh
+  root plus at most four same-snapshot cursor requests, ordinary target 60, no
+  old cursor, A/B exactly once, the existing viewport tolerance,
+  `document.fonts.ready`, manual anchoring, pagination, IntersectionObserver,
+  stale ownership and Calendar retirement.
+- Three independent full Website processes each used exactly four workers and
+  zero retries: run 1 `36 passed in 13.4s`, wall `22.83s`; run 2 `36 passed in
+  14.4s`, wall `21.61s`; run 3 `36 passed in 14.8s`, wall `23.82s`. All exited
+  `0`, had no retry or hang, and returned normally after only the existing
+  post-summary Vite mock-proxy `ECONNREFUSED 127.0.0.1:8000` diagnostics. An
+  earlier three-run validation consistently found the in-scope Calendar
+  retirement regression at `35 passed, 1 failed`; the minimal explicit
+  Calendar retirement fix was added before these three successful runs.
+- Final `npm.cmd run build` completed Vite in `3.45s`, wall `12.33s`, exit `0`
+  with only existing non-module-script warnings. The subsequent
+  `npm.cmd run verify:build` passed in wall `0.47s`, exit `0`. All six named
+  output directories created by this session were resolved under
+  `E:\personal_website\test-results` and are absent after cleanup; no older
+  output directory or user file was removed.
+
+#### Pre-commit review, scope and publication
+
+- The `implement` skill's pre-commit review ran Standards and Spec as separate
+  read-only axes against the two exact starting SHAs. Standards reported zero
+  findings and Spec reported zero findings. This was not a formal fixed-range
+  review and no formal review record was appended.
+- The implementation diff is limited to the migration and its real CLI system
+  regression in Diary, plus `EntryExperience.tsx` and its two Playwright
+  regressions in Personal Website. No `.env`, credential, production value,
+  Ticket 09, Trash/delete, AI Draft, Queue, RAG or Agent change was added.
+- Personal Website implementation commit
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93` contains only
+  `EntryExperience.tsx` and `continuous-history.spec.ts` and was pushed to
+  `main`. Exact-SHA [Website checks and Pages run
+  31718206467](https://github.com/oscar940327/my-personal-website/actions/runs/31718206467)
+  completed successfully; jobs
+  [build 94508236223](https://github.com/oscar940327/my-personal-website/actions/runs/31718206467/job/94508236223)
+  and
+  [deploy 94508644927](https://github.com/oscar940327/my-personal-website/actions/runs/31718206467/job/94508644927)
+  were both `completed/success`. Exact-SHA [pages build and deployment run
+  31718205457](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457)
+  also completed successfully; jobs
+  [build 94508237958](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457/job/94508237958),
+  [report-build-status 94508356302](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457/job/94508356302)
+  and
+  [deploy 94508356401](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457/job/94508356401)
+  were all `completed/success`.
+- Diary CI now pins that exact Website implementation SHA. The scoped Diary
+  implementation commit and its exact-SHA Backend run/job evidence are reported
+  in the implementation handoff after the remote gate completes. No PR will be
+  created. The only permitted next step after that gate is a new formal
+  fixed-range code-review session.
