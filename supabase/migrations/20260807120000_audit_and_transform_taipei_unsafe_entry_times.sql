@@ -1,5 +1,3 @@
-begin;
-
 create table if not exists public.entry_time_migration_audits (
     entry_id uuid primary key,
     owner_id uuid not null,
@@ -102,7 +100,11 @@ begin
 end;
 $$;
 
-lock table public.entries in share row exclusive mode;
+do $$
+begin
+    lock table public.entries in share row exclusive mode;
+end;
+$$;
 
 insert into public.entry_time_migration_audits (
     entry_id,
@@ -133,5 +135,3 @@ where entries.id = entry_time_migration_audits.entry_id
   and entries.entry_at = entry_time_migration_audits.original_entry_at
   and entries.entry_at
     > '9999-12-31 15:59:59.999999+00'::timestamptz;
-
-commit;

@@ -3239,3 +3239,108 @@ No additional missing, partial, unasked-for or incorrectly implemented Ticket
 - Because this review failed, the only permitted next work is another new
   Ticket 08 blocker implementation session for the `20260807120000`
   migration/bookkeeping atomicity defect. Ticket 09 remains blocked.
+
+### 2026-08-14 - Remaining migration atomicity blocker fixed
+
+#### Session boundary and starting gate
+
+- This was a new Ticket 08 blocker implementation/TDD session limited to the
+  one High finding confirmed by the 2026-08-14 formal review. It did not run a
+  formal fixed-range review and does not claim that Ticket 08 passed review.
+- Diary began on `main` with local `HEAD`, local `origin/main` and GitHub
+  remote `main` all exactly
+  `54ab40a3a838e8228a0271339434a95bd6079b91`; Personal Website began on
+  `main` with all three refs exactly
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`. Both tracked worktrees were
+  clean. No stash, reset, checkout, PR or user-file cleanup was used.
+- The public TDD seam was pinned Supabase CLI v2.109.1 applying the real
+  ordered migrations to local PostgreSQL. Failure injection was a trigger on
+  `supabase_migrations.schema_migrations` whose only rejecting branch matched
+  version `20260807120000`.
+
+#### Deterministic Red and root cause
+
+- The new regression reset to preceding version `20260805120000`, created one
+  owner Entry at `9999-12-31T16:00:00Z`, injected the version-specific
+  bookkeeping failure and ran the real CLI upgrade. With the original `071`
+  top-level `BEGIN`/`COMMIT`, Red was `1 failed in 116.56s`, command wall
+  `117.84s`, exit `1`, with zero retry and no hang.
+- The observed rollback state was exact: bookkeeping was absent, while product
+  DDL, the immutable audit row, the Entry Time transformation and the current
+  history-position transformation had all committed. This proved the review's
+  partial-commit symptom rather than an adjacent migration failure.
+- The confirmed root cause was the top-level `COMMIT` ending the migration
+  transaction before Supabase CLI v2.109.1 inserted its migration bookkeeping
+  row. The lower-ranked hypotheses that the CLI did not provide an implicit
+  whole-batch transaction or that the version-specific trigger targeted a
+  different migration were falsified by Green.
+
+#### Minimal Green and preserved lock
+
+- The only product change removes top-level `BEGIN` and `COMMIT` from
+  `20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql`. The
+  existing `LOCK TABLE public.entries IN SHARE ROW EXCLUSIVE MODE` remains
+  explicit and is wrapped in one `DO` statement, matching the unchanged `041`
+  migration. PostgreSQL holds that table lock to the CLI-owned transaction end,
+  which now occurs only after the `schema_migrations` insert succeeds or the
+  complete batch rolls back.
+- The same regression turned Green at `1 passed in 106.50s`, command wall
+  `107.58s`, exit `0`, with zero retry and no hang. It proved bookkeeping,
+  product DDL, audit data, Entry transformation and history transformation all
+  rolled back together. After the failure trigger was removed, the migration
+  retried successfully and each bookkeeping/effect assertion had exactly one
+  row or one current transformed position.
+- Audit schema and semantics, immutable trigger, RLS, grants, PostgREST,
+  FastAPI and Entry transformation rules were not changed. Migration
+  `20260804120000` has no diff. A read-only scan of every Ticket 08 migration
+  found no remaining top-level `BEGIN`, `START TRANSACTION`, `COMMIT` or
+  `ROLLBACK`; PL/pgSQL block-local `begin`/`end` statements are not transaction
+  control.
+
+#### Required local validation
+
+- Pinned CLI version check returned `2.109.1`, exit `0`. The first clean-reset
+  invocation correctly refused because the stack was stopped: wall `2.38s`,
+  exit `1`, no migration assertion, retry or hang. This session then started
+  the local stack and the clean ordered reset applied all 17 migrations plus
+  seed in wall `65.61s`, exit `0`, with no retry or hang.
+- Existing `041` rollback/retry validation first completed its product checks
+  but received a local Auth `502` while its `finally` cleanup reprovisioned a
+  user: `1 failed in 105.36s`, wall `106.47s`, exit `1`. A second attempt met
+  the same `502` during fixture setup: `1 error in 34.83s`, wall `35.94s`, exit
+  `1`. Container inspection showed healthy Auth but an unhealthy Kong upstream
+  after repeated resets under the session's full-stack ownership. The session
+  stopped that stack and returned lifecycle ownership to the repository pytest
+  fixture; the required regression then passed `1 passed in 106.63s`, wall
+  `107.73s`, exit `0`. These were two recorded infrastructure retries; no run
+  hung, and no product assertion failed.
+- The previous-version concurrent Create regression passed `1 passed in
+  106.47s`, wall `107.58s`, exit `0`, with zero retry and no hang. The
+  2026-08-10 FK/Create finding remains closed as a false positive; this session
+  found no new evidence and did not reopen it.
+- The upgrade-over-existing-data regression passed `1 passed in 109.21s`, wall
+  `110.33s`, exit `0`, with zero retry and no hang. It retained the two unsafe
+  Entry transformations, safe control, immutable audits, RLS, grants,
+  PostgREST, FastAPI, history/calendar behavior and repeat-idempotency checks.
+- `python -m mypy src tests` found no issues in 21 source files, wall `2.61s`,
+  exit `0`. Complete `python -m pytest -q --tb=short` passed `85 passed, 1
+  warning in 306.33s`, command wall `307.50s`, exit `0`, with zero pytest retry
+  and no hang. The warning is the existing Starlette/httpx deprecation.
+
+#### Scope, cleanup and handoff
+
+- The implementation diff before this append contained only the `071`
+  migration and its real-CLI system regression. No Personal Website file was
+  modified. Existing Note Garden scope drift and duplicated-code/divergent-
+  change findings were not handled. Ticket 09, Trash/delete, AI Draft, Queue,
+  RAG and Agent work were not started.
+- No named test-output directory was created. The pre-existing ignored
+  `.pytest_cache` was used by pytest and left untouched because it was not
+  established as session-created. The session-started Supabase stack was
+  stopped; no `supabase_*_diary` container remained. No debug marker, `.env`,
+  credential or production configuration was added.
+- The scoped migration, regression and this append-only record are committed
+  together and pushed to Diary `main`. Exact commit and Backend run/job links
+  are recorded in the completion handoff after every job at that SHA reaches
+  `completed/success`. The only permitted next step is another new Ticket 08
+  formal fixed-range code-review session; Ticket 09 remains blocked.

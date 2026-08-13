@@ -15,6 +15,7 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PREVIOUS_SCHEMA_VERSION = "20260805120000"
 HISTORY_POSITION_PREVIOUS_SCHEMA_VERSION = "20260803120000"
 HISTORY_POSITION_SCHEMA_VERSION = "20260804120000"
+TRANSFORMATION_SCHEMA_VERSION = "20260807120000"
 MIGRATION_PAUSE_LOCK = 808_041_200
 CREATE_PAUSE_LOCK = 808_041_201
 TRANSFORMATION_MIGRATION = (
@@ -413,6 +414,217 @@ def test_history_upgrade_rolls_back_when_cli_bookkeeping_fails_and_retries(
         assert _database_condition_is_true(safely_retried), (
             safely_retried.stdout,
             safely_retried.stderr,
+        )
+    finally:
+        restore = _supabase_cli("db", "reset", "--local")
+        assert restore.returncode == 0, restore.stderr
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
+
+
+def test_taipei_safety_upgrade_rolls_back_when_cli_bookkeeping_fails_and_retries(
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    reset_previous = _supabase_cli(
+        "db",
+        "reset",
+        "--local",
+        "--version",
+        PREVIOUS_SCHEMA_VERSION,
+    )
+    assert reset_previous.returncode == 0, reset_previous.stderr
+
+    try:
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
+        _assert_owner_registry(local_supabase, owner_access_token)
+        unsafe_entry = _rpc_create(
+            local_supabase,
+            owner_access_token,
+            content="Taipei safety bookkeeping rollback preserves this Entry.",
+            entry_at="9999-12-31T16:00:00Z",
+            idempotency_key="taipei-safety-bookkeeping-rollback-entry",
+        )
+        unsafe_entry_id = cast(str, unsafe_entry["id"])
+
+        inject_bookkeeping_failure = _psql(
+            f"""
+            create function public.ticket08_fail_taipei_safety_bookkeeping()
+            returns trigger
+            language plpgsql
+            as $$
+            begin
+                if new.version = '{TRANSFORMATION_SCHEMA_VERSION}' then
+                    raise exception
+                        'forced Ticket 08 Taipei safety bookkeeping failure';
+                end if;
+                return new;
+            end;
+            $$;
+
+            create trigger ticket08_fail_taipei_safety_bookkeeping
+            before insert on supabase_migrations.schema_migrations
+            for each row
+            execute function
+                public.ticket08_fail_taipei_safety_bookkeeping();
+            """
+        )
+        assert inject_bookkeeping_failure.returncode == 0, (
+            inject_bookkeeping_failure.stderr
+        )
+
+        failed_upgrade = _supabase_cli("migration", "up", "--local")
+        assert failed_upgrade.returncode != 0, failed_upgrade.stdout
+
+        bookkeeping_rolled_back = _database_condition_is_true(
+            _psql(
+                f"""
+                select (
+                    select count(*) = 0
+                    from supabase_migrations.schema_migrations
+                    where version = '{TRANSFORMATION_SCHEMA_VERSION}'
+                )::integer;
+                """
+            )
+        )
+        audit_table_rolled_back = _database_condition_is_true(
+            _psql(
+                """
+                select (
+                    to_regclass('public.entry_time_migration_audits')
+                        is null
+                )::integer;
+                """
+            )
+        )
+        audit_function_rolled_back = _database_condition_is_true(
+            _psql(
+                """
+                select (
+                    to_regprocedure(
+                        'public.reject_entry_time_migration_audit_mutation()'
+                    ) is null
+                )::integer;
+                """
+            )
+        )
+        audit_data_rolled_back = True
+        if not audit_table_rolled_back:
+            audit_data_rolled_back = _database_condition_is_true(
+                _psql(
+                    f"""
+                    select (
+                        select count(*) = 0
+                        from public.entry_time_migration_audits
+                        where entry_id = '{unsafe_entry_id}'::uuid
+                    )::integer;
+                    """
+                )
+            )
+        entry_transformation_rolled_back = _database_condition_is_true(
+            _psql(
+                f"""
+                select (
+                    select count(*) = 1
+                    from public.entries
+                    where id = '{unsafe_entry_id}'::uuid
+                      and entry_at =
+                          '9999-12-31T16:00:00Z'::timestamptz
+                )::integer;
+                """
+            )
+        )
+        history_transformation_rolled_back = _database_condition_is_true(
+            _psql(
+                f"""
+                select (
+                    select count(*) = 1
+                    from public.entry_history_positions
+                    where entry_id = '{unsafe_entry_id}'::uuid
+                      and valid_until_xid is null
+                      and entry_at =
+                          '9999-12-31T16:00:00Z'::timestamptz
+                )::integer;
+                """
+            )
+        )
+        rollback_state = {
+            "bookkeeping": bookkeeping_rolled_back,
+            "product_ddl": (
+                audit_table_rolled_back and audit_function_rolled_back
+            ),
+            "audit_data": audit_data_rolled_back,
+            "entry_transformation": entry_transformation_rolled_back,
+            "history_transformation": history_transformation_rolled_back,
+        }
+        assert rollback_state == {
+            "bookkeeping": True,
+            "product_ddl": True,
+            "audit_data": True,
+            "entry_transformation": True,
+            "history_transformation": True,
+        }
+
+        remove_bookkeeping_failure = _psql(
+            """
+            drop trigger ticket08_fail_taipei_safety_bookkeeping
+                on supabase_migrations.schema_migrations;
+            drop function public.ticket08_fail_taipei_safety_bookkeeping();
+            """
+        )
+        assert remove_bookkeeping_failure.returncode == 0, (
+            remove_bookkeeping_failure.stderr
+        )
+
+        retry = _supabase_cli("migration", "up", "--local")
+        assert retry.returncode == 0, (retry.stdout, retry.stderr)
+        safely_retried_once = _psql(
+            f"""
+            select (
+                (
+                    select count(*) = 1
+                    from supabase_migrations.schema_migrations
+                    where version = '{TRANSFORMATION_SCHEMA_VERSION}'
+                )
+                and to_regclass(
+                    'public.entry_time_migration_audits'
+                ) is not null
+                and to_regprocedure(
+                    'public.reject_entry_time_migration_audit_mutation()'
+                ) is not null
+                and (
+                    select count(*) = 1
+                    from public.entry_time_migration_audits
+                    where entry_id = '{unsafe_entry_id}'::uuid
+                      and original_entry_at =
+                          '9999-12-31T16:00:00Z'::timestamptz
+                      and transformed_entry_at =
+                          '9999-12-30T16:00:00Z'::timestamptz
+                      and migration_version =
+                          '{TRANSFORMATION_SCHEMA_VERSION}'
+                )
+                and (
+                    select count(*) = 1
+                    from public.entries
+                    where id = '{unsafe_entry_id}'::uuid
+                      and entry_at =
+                          '9999-12-30T16:00:00Z'::timestamptz
+                )
+                and (
+                    select count(*) = 1
+                    from public.entry_history_positions
+                    where entry_id = '{unsafe_entry_id}'::uuid
+                      and valid_until_xid is null
+                      and entry_at =
+                          '9999-12-30T16:00:00Z'::timestamptz
+                )
+            )::integer;
+            """
+        )
+        assert _database_condition_is_true(safely_retried_once), (
+            safely_retried_once.stdout,
+            safely_retried_once.stderr,
         )
     finally:
         restore = _supabase_cli("db", "reset", "--local")
