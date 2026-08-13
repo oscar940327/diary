@@ -3022,3 +3022,220 @@ behavior. No passing local or remote gate can downgrade them.
   in the implementation handoff after the remote gate completes. No PR will be
   created. The only permitted next step after that gate is a new formal
   fixed-range code-review session.
+
+### 2026-08-14 - Fresh formal fixed-range code review requires changes
+
+#### Session contract, starting gate and verdict
+
+- This was a new formal fixed-range review session. The complete `code-review`
+  skill was read first. Standards and Spec were reviewed by two isolated,
+  read-only agents in parallel against both complete integrated ranges; the
+  one-commit blocker-fix subranges were checked separately and did not replace
+  the integrated review. All 25 changed files plus relevant source were
+  inspected, not only tests or endpoint commits.
+- Diary began on `main` with local `HEAD`, local `origin/main` and GitHub remote
+  `main` all exactly
+  `d179ce77a592d7d336ee43e70ac0f42030447b75`; its tracked worktree was clean.
+  Personal Website began on `main` with all three refs exactly
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`; its tracked worktree was clean.
+- Overall verdict: **CHANGES-REQUIRED**.
+  - Standards: **CHANGES-REQUIRED**, five findings: one High blocking hard
+    violation, one Low non-blocking hard violation and three Low non-blocking
+    Fowler judgments.
+  - Spec: **CHANGES-REQUIRED**, two findings: one High blocking defect and one
+    retained Low non-blocking scope finding.
+  - The axes remain separately ordered below. They do not cancel or rerank one
+    another. The shared High evidence is one underlying blocker, not two
+    implementation tasks.
+
+#### Fixed ranges and preflight
+
+- Diary integrated range:
+  `898a6056068ce282e36399d568ea6350bb413f29...d179ce77a592d7d336ee43e70ac0f42030447b75`.
+  Both endpoints resolved, the merge-base was exactly the requested base, the
+  range was non-empty with 22 commits, and complete-range `git diff --check`
+  returned `0`. It contains 14 changed files, 7,150 insertions and 30
+  deletions.
+- Personal Website integrated range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...b6d61fdea942f5445bce59e4c6cc2baeb486ae93`.
+  Both endpoints resolved, the merge-base was exactly the requested base, the
+  range was non-empty with 11 commits, and complete-range `git diff --check`
+  returned `0`. It contains 11 changed files, 3,319 insertions and 69
+  deletions.
+- Diary blocker-fix subrange
+  `ce8cc5dfaa6216d7e044e7035a5a7de4bf8b0b0d...d179ce77a592d7d336ee43e70ac0f42030447b75`
+  and Website blocker-fix subrange
+  `6fb5c4e5dd8283fd9438cd3eb6ca497da1f37beb...b6d61fdea942f5445bce59e4c6cc2baeb486ae93`
+  each resolved and contained one commit.
+
+#### Standards review - CHANGES-REQUIRED
+
+1. **High - blocking hard violation - migration/bookkeeping atomicity remains
+   broken.** Diary
+   `supabase/migrations/20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql:1,105,137`
+   still wraps its audit/backfill and `SHARE ROW EXCLUSIVE` lock in top-level
+   `BEGIN`/`COMMIT`. Pinned Supabase CLI v2.109.1 queues parsed migration
+   statements and then the `schema_migrations` insert; its pinned pgconn batch
+   loses the implicit whole-batch transaction when transaction-control
+   statements are present. Product DDL/data can therefore commit while the
+   bookkeeping insert fails. The new regression at
+   `tests/system/test_migration_upgrade.py:17,273-423` injects failure only for
+   version `20260804120000`, so it cannot detect this second instance. This
+   violates `docs/adr/0013-use-expand-contract-database-migrations.md:19`.
+2. **Low - non-blocking hard workflow violation, preserved.** Personal Website
+   `index.html:132` adds Note Garden within Ticket 08, contrary to
+   `docs/agents/development-workflow.md:3,19` one-ticket scope. This is the
+   known existing scope drift and was not changed.
+3. **Low - Fowler Duplicated Code judgment, preserved.** Personal Website
+   `src/diary/EntryExperience.tsx:976-982,1041-1048` repeats rebuilt-window
+   installation and cleanup.
+4. **Low - possible Fowler Divergent Change judgment, preserved.** Personal
+   Website `src/diary/EntryExperience.tsx:160-275,461-752,893-1058` combines
+   rebuild, pagination, ownership, midnight, mutation recovery, anchoring and
+   dialogs.
+5. **Low - Fowler Duplicated Code judgment, preserved.** Diary
+   `tests/system/test_migration_upgrade.py:51-94` duplicates Docker/psql argv
+   construction.
+
+No additional documented-standard, RLS, grants, PostgREST, FastAPI,
+previous-version, Ticket 03-08 or security violation was found.
+
+#### Spec review - CHANGES-REQUIRED
+
+1. **High - blocking - integrated migration/bookkeeping atomicity is still
+   incomplete.** The `20260804120000` blocker fix is correct, but
+   `20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql:1,137`
+   retains the same top-level transaction-control defect. Its DDL, immutable
+   audit setup and data transformation can commit before its later
+   `schema_migrations` insert. The new real-CLI regression covers only
+   `20260804120000`. This violates `.scratch/diary/spec.md:363` and
+   `docs/adr/0013-use-expand-contract-database-migrations.md:19` transactional
+   migration-failure requirements.
+2. **Low - retained known scope creep, unchanged.** Personal Website
+   `index.html:132` adds the unrelated Note Garden link, contrary to
+   `.scratch/diary/spec.md:193` existing-site preservation. No cleanup was
+   authorized or performed.
+
+No additional missing, partial, unasked-for or incorrectly implemented Ticket
+08 behavior was found.
+
+#### 2026-08-13 blocker and invariant dispositions
+
+- **Migration statements plus bookkeeping: PARTIAL, still blocking.** The
+  latest Diary subrange correctly removes top-level transaction control from
+  `20260804120000`. Its explicit
+  `LOCK TABLE public.entries IN SHARE ROW EXCLUSIVE MODE` is correctly wrapped
+  in one `DO` statement and remains held to the CLI-owned implicit transaction
+  end. The real v2.109.1 rollback/retry regression passes. The complete range
+  nevertheless fails because changed migration `20260807120000` retains the
+  same transaction/bookkeeping split and the regression does not exercise it.
+- **2026-08-10 FK/Create race: CLOSED as a false positive.** No new evidence
+  reopens it. The deterministic previous-version regression remains green and
+  confirms the explicit lock excludes Create through backfill and trigger
+  installation.
+- **Failed Save rebuild crossing Taipei midnight: CLOSED.** Save, midnight and
+  manual Refresh all call the shared `rebuildHistoryWindow`. Independent
+  reading Entry A and changed Entry B are both mandatory; only a successful
+  guard installs the rebuilt window and clears recovery. Missing A or B fails
+  closed while retaining retryable recovery. Explicit Calendar navigation
+  separately retires old-date recovery.
+- Source and fresh Chromium validation retained one fresh root plus at most
+  four same-snapshot cursor requests, ordinary target 60, no old cursor, A/B
+  exactly once, viewport and `document.fonts.ready` anchoring, manual
+  pagination, IntersectionObserver loading, stale-finally/loading ownership
+  and Calendar retirement.
+- Entry Time remains metadata only. Capture time, Original Content, immutable
+  Revisions and AI processing obligations remain unchanged. Asia/Taipei
+  grouping, Calendar counts, microsecond/UUID ordering and snapshot behavior
+  remain correct. Forced RLS, grants, direct PATCH denial, PostgREST owner-token
+  evaluation, FastAPI authorization and previous-version/Ticket 03-08
+  compatibility showed no additional regression.
+
+#### Exact endpoint GitHub Actions
+
+- Diary exact endpoint
+  `d179ce77a592d7d336ee43e70ac0f42030447b75`:
+  [Backend checks run 31718529209](https://github.com/oscar940327/diary/actions/runs/31718529209)
+  was attempt 1 `completed/success`; its only returned
+  [test job 94509319178](https://github.com/oscar940327/diary/actions/runs/31718529209/job/94509319178)
+  was also `completed/success` at that exact SHA.
+- Personal Website exact endpoint
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`:
+  [Website checks and Pages run 31718206467](https://github.com/oscar940327/my-personal-website/actions/runs/31718206467)
+  was attempt 1 `completed/success`; jobs
+  [build 94508236223](https://github.com/oscar940327/my-personal-website/actions/runs/31718206467/job/94508236223)
+  and
+  [deploy 94508644927](https://github.com/oscar940327/my-personal-website/actions/runs/31718206467/job/94508644927)
+  were `completed/success`.
+- At the same Website SHA,
+  [pages build and deployment run 31718205457](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457)
+  was attempt 1 `completed/success`; jobs
+  [build 94508237958](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457/job/94508237958),
+  [report-build-status 94508356302](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457/job/94508356302)
+  and
+  [deploy 94508356401](https://github.com/oscar940327/my-personal-website/actions/runs/31718205457/job/94508356401)
+  were all `completed/success`.
+
+#### Fresh local validation
+
+##### Personal Website
+
+- `npm.cmd run typecheck`: wall `1.9s`, exit `0`.
+- Focused A/B, Save/recovery, font/layout, midnight, stale ownership and
+  Calendar-retirement Chromium set: exactly four workers, zero retries,
+  `14 passed in 13.2s`, command wall `27.2s`, exit `0`, no hang or
+  post-summary process error.
+- One independent complete Chromium run: exactly four workers, zero retries,
+  `36 passed in 16.5s`, command wall `25.4s`, exit `0`, no retry or hang. It
+  emitted only the known post-summary Vite mock-proxy
+  `ECONNREFUSED 127.0.0.1:8000` diagnostic; the command returned normally.
+- `npm.cmd run build`: Vite `3.13s`, command wall `8.8s`, exit `0`, with only
+  existing non-module-script warnings. `npm.cmd run verify:build`: wall
+  `1.3s`, exit `0`.
+- The only two output directories created by this session were absolute-path
+  verified beneath `E:\personal_website\test-results`, then removed. Both are
+  absent. No pre-existing output directory or user file was removed.
+
+##### Diary
+
+- Pinned runtime `npx.cmd supabase --version` returned `2.109.1`, wall `2.1s`,
+  exit `0`. `python -m mypy src tests` found no issue in 21 source files, wall
+  `1.5s`, exit `0`.
+- Focused real migration set covered `20260804120000` bookkeeping rollback and
+  retry, previous-version concurrent Create exclusion, and true
+  upgrade-over-existing-data transformation: `3 passed in 168.89s`, command
+  wall `170.8s`, exit `0`, no retry or hang.
+- Complete suite: `84 passed, 1 warning in 218.89s`, command wall `220.6s`,
+  exit `0`, no retry or hang. The existing warning is the Starlette/httpx
+  deprecation. The run exercised real Supabase Auth/PostgreSQL/PostgREST,
+  forced RLS, FastAPI, Uvicorn and mobile Chromium.
+- An additional no-file-change real-CLI probe injected failure only at the
+  `20260807120000` bookkeeping insert. The first PowerShell harness attempt
+  misclassified normal CLI stderr progress as an exception and was discarded
+  as harness-only evidence: wall `25.2s`, exit `1`, no product assertion. The
+  corrected probe completed in wall `63.0s`: injected migration exit `1`,
+  `PARTIAL_COMMIT_PROBE=1` proved the bookkeeping row absent while product DDL
+  existed, then failure removal produced retry exit `0` and
+  `RETRY_BOOKKEEPING_PROBE=1`. Cleanup full reset and session-started stack stop
+  both exited `0`; there was no hang.
+
+#### Scope, modification and next-step audit
+
+- Fixed-range filenames contain no `.env` or Ticket 09 file. Added source was
+  reviewed for credentials; no production secret, key or environment value was
+  found. Runtime-only local Supabase synthetic values are not reproduced here.
+- Existing Note Garden scope drift remains exactly as reviewed. Existing
+  duplicated-code and divergent-change findings were neither fixed nor
+  refactored. No unrelated HOME, PROJECT, JOURNEY, MktAgent or VideoNote work
+  was performed.
+- No product, migration, test or CI code was modified by this review. No
+  Personal Website file was modified. Ticket 09, Trash/delete, AI Draft,
+  Queue, RAG and Agent work were not started. No PR was created.
+- After validation and runtime cleanup, both tracked worktrees remained clean
+  at the reviewed endpoints. This EOF append is the review session's only file
+  change. It must be preserved as one Diary documentation-only commit and
+  pushed, then that exact commit's Backend run and every returned job must
+  reach `completed/success`.
+- Because this review failed, the only permitted next work is another new
+  Ticket 08 blocker implementation session for the `20260807120000`
+  migration/bookkeeping atomicity defect. Ticket 09 remains blocked.
