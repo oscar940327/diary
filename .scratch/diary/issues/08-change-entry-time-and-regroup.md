@@ -3898,3 +3898,162 @@ behavior was found in either complete range.
   ranges. Ticket 08 may be marked Passed only if that full validation is
   present and the fresh review reports no blocking finding under the formal
   boundary.
+
+### 2026-08-15 - Fresh complete fixed-range review finds a recovery-anchor blocker
+
+#### Session contract, starting gate and verdict
+
+- This was a new formal Ticket 08 review-only session under the repository
+  `code-review` skill. Standards and Spec ran as isolated read-only axes
+  against both complete integrated fixed ranges. The primary reviewer also
+  inspected the complete ranges and performed every required local validation.
+  No product, migration, test, CI or Personal Website source file was changed,
+  no finding was fixed, and Ticket 09 was not started.
+- Diary began clean on `main`; local `HEAD`, local `origin/main` and GitHub
+  remote `main` were exactly
+  `906b409c9408a243d54976a94be5513aa39376ca`.
+- Personal Website began clean on `main`; local `HEAD`, local `origin/main`
+  and GitHub remote `main` were exactly
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`.
+- Diary exact-SHA
+  [Backend checks run 31814231657](https://github.com/oscar940327/diary/actions/runs/31814231657)
+  was attempt 1 `completed/success`. Its only returned `test` job
+  (`94811927839`) and every returned step were also `completed/success`.
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**.
+  - Standards: **CHANGES-REQUIRED**, one Medium blocking lifecycle and
+    required-validation finding plus four retained Low non-blocking findings.
+  - Spec: **CHANGES-REQUIRED**, one Medium blocking reading-anchor finding
+    plus one retained Low non-blocking scope finding.
+  - The two axes independently identify the same runtime evidence. It is one
+    underlying blocker, but the axes remain separately reported and do not
+    cancel or rerank one another.
+
+#### Fixed ranges and complete-source review
+
+- Diary fixed range:
+  `898a6056068ce282e36399d568ea6350bb413f29...906b409c9408a243d54976a94be5513aa39376ca`.
+  Both endpoints resolved, merge-base was exactly the requested base, the
+  range was non-empty with 28 commits and 25 changed files, and complete-range
+  `git diff --check` returned `0`.
+- Personal Website fixed range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...b6d61fdea942f5445bce59e4c6cc2baeb486ae93`.
+  Both endpoints resolved, merge-base was exactly the requested base, the
+  range was non-empty with 11 commits and 11 changed files, and complete-range
+  `git diff --check` returned `0`.
+- Before review, the primary reviewer read `CONTEXT.md`, ADR 0013, ADR 0016,
+  the complete MVP `spec.md`, this complete Ticket 08 record including every
+  prior failed review and finding, and repository issue-tracker, domain and
+  development-workflow guidance. Neither independent axis was limited to the
+  latest subrange or endpoint commit.
+
+#### Standards review - CHANGES-REQUIRED
+
+1. **Medium - blocking - required browser validation and reading-anchor
+   lifecycle are timing-dependent.** The mandatory complete Personal Website
+   command ran all 36 Chromium tests with exactly four workers and zero
+   retries. It failed `35 passed, 1 failed` at
+   `tests/e2e/continuous-history.spec.ts:734,1028-1032`. After a committed
+   Entry Time recovery, reading Entry A and changed Entry B were both present
+   and fresh cursors were usable, but A remained at `99.359375` instead of its
+   saved `138.578125` top position: an owner-visible `39.21875px` displacement
+   that did not recover during the five-second poll.
+
+   Personal Website `src/diary/EntryExperience.tsx:502-530,950-982,1041-1048`
+   assigns the captured anchor while replacing the recovered window and relies
+   on immediate, one animation-frame and `document.fonts.ready` restoration.
+   The complete-run failure shows that lifecycle does not reliably cover the
+   final layout timing. A subsequent isolated, zero-retry invocation of the
+   exact non-delayed case passed `1 passed`; that establishes timing-dependent
+   unreliability and does not erase the required complete-run failure.
+2. **Low - non-blocking retained hard workflow violation.** Personal Website
+   `index.html:132` adds the unrelated Note Garden link inside Ticket 08,
+   contrary to `docs/agents/development-workflow.md:11,19` single-ticket
+   scope. It was recorded only and not changed.
+3. **Low - non-blocking Fowler Duplicated Code judgement.** Personal Website
+   `src/diary/EntryExperience.tsx:976-982,1041-1048` repeats rebuilt-window
+   installation and cleanup.
+4. **Low - non-blocking possible Fowler Divergent Change judgement.** Personal
+   Website `src/diary/EntryExperience.tsx:160-275,461-752,893-1058` combines
+   pagination, request ownership, midnight refresh, mutation recovery and
+   viewport anchoring.
+5. **Low - non-blocking Fowler Duplicated Code judgement.** Diary
+   `tests/system/test_migration_upgrade.py:54-73,76-96` repeats Docker/psql
+   argument construction.
+
+#### Spec review - CHANGES-REQUIRED
+
+1. **Medium - blocking - Entry Time recovery does not reliably preserve the
+   visual reading anchor.** MVP spec user story 21 at `spec.md:47` requires
+   newly loaded groups not to move the owner's reading position, and the
+   History implementation contract at `spec.md:200` requires explicit scroll
+   anchoring. The complete-run evidence above has complete recovered data and
+   fresh pagination but leaves reading A displaced by `39.21875px`. The later
+   isolated pass confirms timing dependence rather than establishing the
+   required reliable owner behavior. This violates the visual-anchor contract
+   and prevents the mandatory complete validation gate from succeeding.
+2. **Low - non-blocking retained scope creep.** Personal Website
+   `index.html:132` adds Note Garden outside Ticket 08's Entry-Time-only scope
+   (`08-change-entry-time-and-regroup.md:3-17`) and the spec's existing-site
+   preservation boundary (`spec.md:15,158,193`). It is not Ticket 09.
+
+No other missing, partial or incorrectly implemented Ticket 08 requirement was
+found in either complete range.
+
+#### ADR 0013 and ADR 0016 disposition
+
+- The latest same-Entry `071` to `091` finding remains accurate evidence under
+  its former assumption that the immediately previous Change RPC could write
+  between migration files. This review does not say or imply that product code
+  fixed it.
+- ADR 0016 excludes that assumption from the formal production contract:
+  migration starts only after all new Diary API admission is closed, in-flight
+  requests drain and every write-capable workload is quiescent; old and new
+  backends do not write while migrations execute. The historical finding is
+  therefore not a current blocker under the supported boundary, and this
+  review does not reintroduce a zero-downtime MVP requirement.
+- ADR 0013 remains fully enforced. Complete source inspection plus the pinned
+  real-CLI regressions found no separate blocking migration defect in stable
+  pre/post schema compatibility, immediately previous application RPC/History
+  rollback compatibility, expand-contract ordering, per-file CLI-owned
+  transactional failure/rollback/retry, or quiescent Entry, History-position
+  and immutable audit invariants.
+
+#### Complete local validation
+
+- Pinned Supabase CLI was exactly `2.109.1`; Docker was Linux engine `29.6.2`.
+- Clean ordered `supabase db reset --local` applied all 17 migrations and seed,
+  including `20260807120000` and `20260809120000`, exit `0`.
+- All five Ticket 08 real-CLI migration regressions passed
+  `5 passed in 301.10s`, exit `0`. They covered `041` and `071` bookkeeping
+  rollback/retry, the `071` to `091` concurrent-Create repair, the original
+  previous-version Create compatibility regression, and upgrade-over-existing-
+  data immutable audit/transform behavior.
+- `python -m mypy src tests` passed with no issue in 21 source files.
+- Complete `python -m pytest -q --tb=short` passed
+  `86 passed, 1 warning in 356.31s`, exit `0`. The warning is the existing
+  Starlette/httpx deprecation. The suite exercised real local Supabase Auth,
+  PostgreSQL/PostgREST, forced RLS, FastAPI, Uvicorn and mobile Chromium.
+- Personal Website `npm.cmd run typecheck`, `npm.cmd run build` and
+  `npm.cmd run verify:build` all passed. Build emitted only the existing
+  informational non-module-script warnings.
+- The required complete Website Chromium run used exactly four workers and
+  zero retries and **failed** `35 passed, 1 failed` for the blocking finding
+  above. The isolated diagnostic passed `1 passed` and is not reported as a
+  replacement full-suite pass.
+- The session-created Supabase stack was stopped without backup. Only the two
+  exact session-created ignored Playwright output directories were removed
+  after their absolute paths were verified; no pre-existing output or user
+  file was touched.
+
+#### Scope and next step
+
+- No product, migration, test, CI or Personal Website source was modified in
+  this review. No secret, `.env` file or production configuration was added.
+  No PR was created. Ticket 09, Trash/delete, AI Draft, Queue, RAG and Agent
+  work were not started.
+- Ticket 08 remains `ready-for-agent` and **REVIEW-FAILED /
+  CHANGES-REQUIRED**. It is not Passed because the complete required browser
+  validation failed and both review axes contain a blocking finding. The only
+  permitted next work is a separate Ticket 08 implementation/TDD session for
+  the recovery reading-anchor reliability defect, followed by another fresh
+  complete fixed-range review. Ticket 09 remains blocked.
