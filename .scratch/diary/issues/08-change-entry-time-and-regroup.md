@@ -3651,3 +3651,196 @@ No additional missing, partial, unasked-for or incorrectly implemented Ticket
   handoff. This session is not a formal code review and cannot declare Ticket
   08 PASS. The only permitted next step is a new complete fixed-range
   code-review session; Ticket 09 remains blocked.
+
+### 2026-08-14 - Fresh formal fixed-range review finds a same-Entry migration gap
+
+#### Session contract, starting gate and overall verdict
+
+- This was a new read-only formal review under the repository `code-review`
+  skill. Standards and Spec ran as isolated review axes against both complete
+  integrated ranges; the latest Diary blocker-fix subrange received separate
+  inspection and did not replace the complete review. The primary reviewer
+  independently inspected all 14 Diary and 11 Personal Website changed files,
+  every Ticket 08 migration, the related source and the complete Ticket/spec
+  history rather than relying on endpoint commits or passing tests.
+- Diary began on `main` with local `HEAD`, local `origin/main` and GitHub
+  remote `main` all exactly
+  `fd46d8a96e43bfdde6330c17e1b1b18846af6c56`; Personal Website began on
+  `main` with all three refs exactly
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`. Both tracked worktrees were
+  clean. The first sandboxed remote check could not reach GitHub (wall `0.8s`,
+  exit `1`); the permitted network retry completed both exact remote checks
+  successfully (outer wall `6.9s`, each command exit `0`, no hang).
+- Diary integrated range:
+  `898a6056068ce282e36399d568ea6350bb413f29...fd46d8a96e43bfdde6330c17e1b1b18846af6c56`.
+  Both endpoints resolve, the range is non-empty with 26 commits and 14 changed
+  files, and complete-range `git diff --check` returned `0`.
+- Personal Website integrated range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...b6d61fdea942f5445bce59e4c6cc2baeb486ae93`.
+  Both endpoints resolve, the range is non-empty with 11 commits and 11 changed
+  files, and complete-range `git diff --check` returned `0`.
+- Latest Diary blocker-fix subrange:
+  `3bd0e320f07e948acca48ba3a621223aa9907cb1...fd46d8a96e43bfdde6330c17e1b1b18846af6c56`.
+  It is non-empty with one commit and three changed files; subrange
+  `git diff --check` returned `0`.
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**. Diary Standards and
+  Spec each contain the same High blocking defect. Personal Website passes
+  both axes with zero included finding. The axes remain separately reported
+  and do not cancel or rerank one another. Ticket 08 is not PASS.
+
+#### Standards review
+
+- **Diary: CHANGES-REQUIRED — one High blocking hard violation.**
+- **Personal Website: PASS — zero included findings.**
+
+1. **High — blocking hard violation — `091` cannot self-heal an already-
+   audited Entry changed again during the `071→091` transaction gap.** The
+   immediately previous Change RPC accepts timestamps through
+   `9999-12-31T23:59:59.999999Z` and updates an existing Entry at
+   `supabase/migrations/20260804130000_restrict_entry_time_to_python_utc_range.sql:48-74`.
+   `071` permits only one audit row per Entry at
+   `supabase/migrations/20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql:1-8`
+   and makes that evidence immutable at `:37-42,70-100`. After `071` audits
+   and transforms Entry X from `16:00Z`, the previous RPC can therefore commit
+   a different unsafe `17:00Z` value after `071` releases its lock and before
+   separately transacted `091` owns its lock.
+
+   `091` then discards the required second evidence pair through
+   `ON CONFLICT (entry_id) DO NOTHING` at
+   `supabase/migrations/20260809120000_enforce_taipei_safe_entry_time_range.sql:16-36`.
+   Its update at `:38-44` skips X because current `17:00Z` no longer equals
+   the retained `071` audit's `original_entry_at=16:00Z`; the Taipei-safe
+   CHECK at `:46-51` fails. Ordinary retry reaches the identical state. This
+   violates ADR 0013's immediately-previous-version compatibility,
+   transactional migration-failure and safe-retry requirements at
+   `docs/adr/0013-use-expand-contract-database-migrations.md:11,17-19,23-24`.
+
+No other included Standards finding was found. Per the explicit session
+boundary, known Note Garden, Duplicated Code and Divergent Change findings are
+excluded rather than repeated or handled.
+
+#### Spec review
+
+- **Diary: CHANGES-REQUIRED — one High blocking finding.**
+- **Personal Website: PASS — zero included findings.**
+
+1. **High — blocking — the migration does not audit/transform every gap row
+   and ordinary retry is not self-healing.** The trigger and evidence are the
+   same as the Standards finding. It contradicts the Ticket 08 accepted
+   migration contract that every unsafe original and exact transformed value
+   is retained while both previous and current application contracts remain
+   usable (`.scratch/diary/issues/08-change-entry-time-and-regroup.md:1273-1299`),
+   the product's expand-contract and transactional-failure requirements
+   (`.scratch/diary/spec.md:362-363`), and ADR 0013. The new Create-only
+   regression at `tests/system/test_migration_upgrade.py:638-1016` uses a new
+   `entry_id`, so it cannot exercise a second unsafe Change on an Entry whose
+   immutable `071` audit already occupies that primary key.
+
+No other missing, partial, incorrectly implemented or non-excluded scope
+behavior was found in either complete range.
+
+#### Latest blocker and invariant dispositions
+
+- **New `071→091` concurrent Create path: PASS for the covered new-Entry
+  case.** `091` starts with `SHARE ROW EXCLUSIVE` at lines `1-5`, and its
+  audit/transform, CHECK, RPC replacements and bookkeeping share the pinned
+  CLI-owned transaction. The regression proves injected `091` bookkeeping
+  failure rolls every `091` effect back with committed `071` preserved;
+  ordinary retry and no-op repeat apply effects/bookkeeping exactly once.
+- **Cross-migration same-Entry Change path: FAIL.** Two no-file-change pinned
+  CLI probes reproduced the source defect. The stronger probe loaded the
+  actual previous-version `043` Change function and called it as the
+  authenticated owner. The function returned the same Entry at
+  `9999-12-31T17:00:00Z`; first `migration up` failed adding the CHECK and an
+  ordinary retry failed identically. Durable state was unsafe Entry `17:00Z`,
+  exactly one old `071` audit whose original is `16:00Z`, `091` bookkeeping
+  count zero and Taipei CHECK count zero.
+- **`071` per-file atomicity and explicit lock: PASS, unchanged.** Its blob is
+  identical across the latest subrange
+  (`60c170be799f39c9171e9548b4cdb82662fe9955`), and its lock/audit/transform
+  remains at lines `103-137`.
+- **`20260804120000`: PASS, byte-for-byte unchanged in the latest subrange.**
+  Its blob is identical on both endpoints
+  (`ab934f7fc4dc489944509ee3767a416f3b2a58d1`); its explicit lock and
+  rollback/retry behavior did not regress.
+- **2026-08-10 `041` FK/Create finding: remains closed as a false positive.**
+  The original deterministic previous-version concurrent Create regression
+  is green. The present blocker is new direct Change-path evidence at the
+  separate `071→091` boundary and does not reopen that allegation.
+- Audit reason/exact 24-hour transformation semantics, immutable trigger, RLS,
+  grants, PostgREST owner-token behavior, FastAPI validation/authorization,
+  metadata-only Entry Time semantics, capture time, Original Content,
+  immutable Revisions, AI obligations, History/Calendar ordering and Ticket
+  03–08 behavior show no additional finding in the inspected and exercised
+  paths.
+
+#### Required validation evidence
+
+##### Diary
+
+- `npx.cmd supabase --version`: the sandbox attempt hit the CLI telemetry-file
+  ACL (`1.33s`, exit `1`); the allowed retry returned exactly `2.109.1`
+  (wall `1.72s`, exit `0`, retry count one, no hang).
+- Initial `npx.cmd supabase status` correctly found the stack stopped (wall
+  `2.41s`, exit `1`); session-owned start passed (wall `38.40s`, exit `0`).
+- Clean ordered `npx.cmd supabase db reset --local` applied all 17 migrations
+  and seed in wall `34.46s`, exit `0`, zero retry and no hang.
+- The five required real-CLI regressions ran together with `--durations=0`:
+  `5 passed in 367.79s`, command wall `369.14s`, exit `0`, zero retry and no
+  hang. Individual call durations were: new `071→091` concurrent Create
+  `68.17s`; `071` bookkeeping rollback/retry `66.21s`; unchanged `041`
+  rollback/retry `66.14s`; original previous-version concurrent Create
+  `65.15s`; upgrade-over-existing-data `64.86s`.
+- `python -m mypy src tests`: no issues in 21 source files, wall `2.04s`, exit
+  `0`, zero retry and no hang.
+- Complete `python -m pytest -q --tb=short`: `86 passed, 1 warning in
+  426.82s`, command wall `428.00s`, exit `0`, zero retry and no hang. The one
+  warning is the existing Starlette/httpx deprecation. The suite exercised
+  real Supabase Auth/PostgreSQL/PostgREST, forced RLS, FastAPI, Uvicorn and
+  mobile Chromium.
+- First equivalent-state blocker probe: setup wall `0.14s`, exit `0`; first
+  migration wall `2.38s`, expected exit `1`; ordinary retry wall `2.36s`,
+  expected exit `1`; durable-state assertion wall `0.10s`, exit `0`; cleanup
+  reset wall `31.98s`, exit `0`. Zero harness retry or hang occurred.
+- Exact previous-RPC blocker probe: setup and authenticated Change wall
+  `0.39s`, exit `0`; first migration wall `2.52s`, expected exit `1`; ordinary
+  retry wall `2.32s`, expected exit `1`; durable-state assertion wall `0.11s`,
+  exit `0`; cleanup reset wall `31.11s`, exit `0`. Zero harness retry or hang
+  occurred.
+- The session-owned stack stopped with `--no-backup` in wall `13.69s`, exit
+  `0`; absolute container inspection returned zero `supabase_*_diary`
+  containers.
+
+##### Personal Website
+
+- `npm.cmd run typecheck`: wall `0.95s`, exit `0`, zero retry and no hang.
+- Complete Chromium E2E:
+  `npm.cmd run test:e2e -- --workers=4 --retries=0 --output=test-results/ticket08-formal-fd46d8a`
+  used exactly four workers and zero retries, ran all 36 tests, and passed
+  `36 passed in 18.7s`; command wall `30.39s`, exit `0`, no hang. The known
+  post-summary mock-proxy `ECONNREFUSED 127.0.0.1:8000` diagnostic did not
+  affect assertions or exit.
+- `npm.cmd run build`: Vite `3.02s`, command wall `8.42s`, exit `0`, zero
+  retry/no hang, with only existing informational non-module-script warnings.
+  `npm.cmd run verify:build`: wall `0.42s`, exit `0`, zero retry/no hang.
+- The sole session-created browser output directory resolved exactly to
+  `E:\personal_website\test-results\ticket08-formal-fd46d8a`; only that
+  absolute path was removed and verified absent. No pre-existing output
+  directory or user file was touched.
+
+#### Scope, modification and next step
+
+- Both repositories were clean after validation and cleanup. No product,
+  migration, test, CI or Personal Website file was modified. No secret,
+  `.env` file or production configuration was added. This EOF append is the
+  review session's only change.
+- No finding was fixed or refactored. No Personal Website change, PR, Ticket
+  09, Trash/delete, AI Draft, Queue, RAG or Agent work was started. Existing
+  Note Garden and excluded code-smell findings remain untouched.
+- Only this documentation record may be committed and pushed. Its exact-SHA
+  Backend run and every returned job must reach `completed/success` before
+  handoff.
+- Because both review axes contain a High blocker, the only permitted next
+  work is a new Ticket 08 blocker implementation/TDD session for the
+  same-Entry `071→091` previous-version Change gap, followed later by another
+  fresh complete fixed-range review. Ticket 09 remains blocked.
