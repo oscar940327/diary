@@ -4149,3 +4149,256 @@ found in either complete range.
 - This is not a Passed verdict. Ticket 08 remains `ready-for-agent` pending a
   new Diary Action against the matching Website SHA and a fresh independent
   complete fixed-range review. Ticket 09 has not started.
+
+### 2026-08-15 - Fresh complete fixed-range review requires changes
+
+#### Session contract and verdicts
+
+- This was a fresh review-only session. Two independent agents separately
+  reviewed the Standards and Spec axes across both complete fixed three-dot
+  ranges. Neither axis reused the other's conclusion. The primary reviewer
+  independently inspected the reported source paths and ran every required
+  local and exact-SHA gate.
+- Standards verdict: **CHANGES-REQUIRED**. One High bounded-recovery blocker
+  and one Medium in-flight intent-ownership blocker remain. Four Low
+  non-blocking maintainability or scope observations are retained.
+- Spec verdict: **CHANGES-REQUIRED**. The independently found High bounded-
+  recovery blocker violates the continuous bidirectional History and explicit
+  reading-anchor requirements. One Low non-blocking scope observation is
+  retained.
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**. Exact-SHA Actions and
+  the authoritative clean local suites passed, but passing tests cannot
+  override either blocking source finding. Ticket 08 is not Passed, Ticket 09
+  remains blocked, and Ticket 09 was not started.
+- The review did not modify product code, migrations, tests, CI, or Personal
+  Website files. Only this Ticket 08 record and `CONTEXT.md` are changed for
+  the review outcome.
+
+#### Fixed ranges and preflight
+
+- Diary fixed range:
+  `898a6056068ce282e36399d568ea6350bb413f29...7cd5db5650ac55f88f583069b268bde17c2d32f5`.
+  Both endpoints resolved as commits, `HEAD` and `origin/main` were exactly the
+  endpoint, merge-base was exactly the requested base, and the non-empty
+  inventory contained 31 commits and 25 changed files.
+- Personal Website fixed range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...973687f903c0d357d655f9e03d256427d238b2c3`.
+  Both endpoints resolved as commits, `HEAD` and `origin/main` were exactly the
+  endpoint, merge-base was exactly the requested base, and the non-empty
+  inventory contained 12 commits and 11 changed files.
+- Both repositories began clean on `main`, aligned with `origin/main`. Both
+  complete three-dot `git diff --check` commands returned exit code `0`.
+- The primary reviewer read Diary `AGENTS.md`,
+  `docs/agents/development-workflow.md`, the complete MVP `spec.md`,
+  `CONTEXT.md`, ADR 0012, ADR 0013, ADR 0016, the related frontend-composition
+  ADR 0005, and this Ticket 08 record. Personal Website has no repository or
+  applicable parent `AGENTS.md`; the only discovered copies were dependency-
+  local files under `node_modules` and do not govern this repository.
+- Both axes inspected the complete original-base-to-endpoint ranges rather
+  than only the recovery-anchor endpoint commit. The 31- and 12-commit
+  inventories, all changed files, prior failures, fixes, ADR boundary change,
+  and retained scope changes were included.
+
+#### Standards review - CHANGES-REQUIRED
+
+1. **High - blocking - the fixed five-request rebuild can make a committed
+   Entry Time change permanently unrecoverable.** Personal Website
+   `src/diary/EntryExperience.tsx:63-65,165-202,245-272,1042-1069,1098-1106,1123-1175`
+   fixes a rebuild at five 20-Entry requests while requiring both the changed
+   active Entry B and an independent reading Entry A before success. A valid
+   loaded History can place A below rank 80 on its dense date. After B moves
+   newer, the cursorless page plus the required newer page consume two of the
+   five requests; three older pages reach only rank 80, so A remains absent
+   and the mandatory-entry guard throws. The committed-save failure has
+   already cleared both cursors, and `Refresh History` repeats the identical
+   impossible algorithm forever.
+
+   Deterministic source and existing-test evidence: the current deep regression
+   at `tests/e2e/continuous-history.spec.ts:1176-1183,1344-1368,1393-1445`
+   constructs 77 dense Entries plus A and succeeds only by using all five
+   requests to find A at the existing rank-80 boundary. One additional valid
+   20-Entry page places A beyond the hard search limit and deterministically
+   takes the throw path. This strands fresh snapshot cursors and continuous
+   lifetime browsing after a successful metadata mutation.
+
+   Required correction: recovery must obtain a usable fresh window around an
+   arbitrarily deep already-loaded reading position without requiring one
+   finite cursor traversal to span both the moved Entry and reading Entry.
+   Provide an Entry-centered locate/around-entry seam or separate bounded
+   reading-window and moved-Entry semantics; merely increasing the constant is
+   not sufficient. Add complete public Chromium save and failed-save recovery
+   coverage with A beyond rank 80 and prove fresh cursors remain usable.
+
+2. **Medium - blocking - scroll or navigation intent during an in-flight
+   recovery does not own the resulting viewport.** Personal Website
+   `src/diary/EntryExperience.tsx:539-612,722-765,1123-1157,1330-1333,1365-1370`
+   cancels only an anchor restorer that already exists. While
+   `recoverHistory()` is awaiting its fresh requests, there is no active
+   restorer and no user-intent generation is recorded. Wheel, touch, a scroll
+   key, pointer/scrollbar intent, or opening Calendar during that interval is
+   therefore forgotten. The still-current response unconditionally queues the
+   older reading anchor; the layout effect and recovery-only `ResizeObserver`
+   can then restore it over the newer user position. Calendar also does not
+   retire the in-flight request, so an unresolved `document.fonts.ready`
+   callback can retain the stale anchor until History is shown again.
+
+   Existing coverage at
+   `tests/e2e/continuous-history.spec.ts:1005-1052,1083-1107` waits for
+   recovery and anchor restoration to finish before issuing wheel or
+   Calendar/History intent. It proves post-install cancellation, not the
+   request-boundary interleaving above.
+
+   Required correction: carry user and surface-navigation intent ownership
+   across the recovery request boundary. A response may install its fresh
+   data and cursors when still current, but it must not restore an anchor made
+   obsolete while the request was in flight. Add delayed-response Chromium
+   cases for wheel/scroll intent and Calendar/History navigation before
+   recovery completion, including delayed `fonts.ready` and layout change.
+
+- **Low - non-blocking scope violation:** Personal Website `index.html:132`
+  adds the unrelated Note Garden homepage link in commit `18dc585`; this is
+  outside Ticket 08 and the one-ticket workflow. It is recorded but not
+  changed in this review.
+- **Low - non-blocking Duplicated Code:** Personal Website
+  `src/diary/EntryExperience.tsx:1079-1090,1154-1164` duplicates rebuilt-window
+  installation and cleanup.
+- **Low - non-blocking possible Divergent Change:** the 1,921-line Personal
+  Website `src/diary/EntryExperience.tsx` combines ordering, pagination,
+  request ownership, midnight refresh, mutation recovery, viewport anchoring,
+  and rendering. A broad refactor is not requested as a Ticket 08 fix.
+- **Low - non-blocking Duplicated Code:** Diary
+  `tests/system/test_migration_upgrade.py:54-96` repeats Docker/psql argument
+  construction.
+
+#### Spec review - CHANGES-REQUIRED
+
+- **High - blocking - a legitimate deep History cannot always regain its
+  reading anchor, fresh snapshot cursors, or continuous browsing after Entry
+  Time mutation.** The Spec axis independently found the same fixed-budget
+  defect at Personal Website
+  `src/diary/EntryExperience.tsx:63-65,165-202,245-272,1042-1069,1098-1106,1123-1175`
+  using the complete range. The rank-beyond-80 reproduction and mandatory fix
+  are the same as Standards finding 1.
+- This violates MVP user story 21 at `.scratch/diary/spec.md:47`, the
+  bidirectional cursor-loading and explicit scroll-anchoring contract at
+  `.scratch/diary/spec.md:200`, and Ticket 08's History regrouping and cursor
+  no-regression requirements. A complete-suite pass at the exact current
+  boundary is not evidence for the next valid page.
+- The Spec axis also retains the Low unrelated Note Garden scope observation
+  at Personal Website `index.html:132`; it is not Ticket 09.
+
+#### Recovery, mutation, migration, and invariant audit
+
+- The recovery-anchor endpoint materially improves the previously blocking
+  final-layout behavior: it captures before the `<details>` layout change,
+  chooses the first visible Entry top, uses a recovery-only `ResizeObserver`,
+  and combines immediate, animation-frame, and `document.fonts.ready`
+  restoration. The complete 36-test suite covers delayed layout, post-install
+  user intent, Calendar/History return, midnight ownership, fresh cursors, and
+  Calendar recovery retirement. Those successes do not cover the two exact
+  interleavings/findings above.
+- Successful rebuild paths use a single fresh snapshot and its own newer and
+  older cursors. Calendar refresh versioning updates affected counts. No old-
+  snapshot cursor overwrite or separate Calendar-count blocker was found.
+- Diary `change_diary_entry_time` updates Entry metadata and History-position
+  metadata only. Complete source and real-system tests show that successful or
+  rejected Entry Time mutation does not create, alter, restore, or stale an
+  Original Content Entry Revision, does not change immutable capture time, and
+  does not create or alter the existing AI-processing obligation.
+- Ticket 03-08 authentication, owner/RLS, capture, bidirectional History,
+  Calendar, revision edit and revision restore invariants showed no additional
+  blocking finding. Taipei-safe timestamp bounds, microsecond/UUID ordering,
+  invalid-request atomicity, and stable pre/post migration RPC contracts remain
+  covered.
+- ADR 0016 is effective. The earlier same-Entry `071` to `091` race remains
+  accurate historical evidence under its former concurrent-writer assumption,
+  but migration execution now occurs only after Diary admission closes,
+  in-flight requests drain, and write-capable workloads quiesce. This review
+  does not reimpose zero-downtime migration or old/new concurrent writes.
+- ADR 0013 remains required across the stable pre- and post-migration states.
+  Ordered expand-contract source, previous-version RPC/History compatibility,
+  bookkeeping rollback/retry, immutable migration audit, and quiescent upgrade
+  behavior showed no separate blocking migration finding.
+- Added-line secret-pattern scans found no committed credential or private-key
+  material. No `.env` file, new secret requirement, or Ticket 09 Trash/delete
+  product implementation was found. Existing `trashed_at is null` references
+  preserve pre-Ticket-09 active-history behavior. ADR 0016 propagation into
+  later deployment-ticket acceptance criteria is related architecture
+  documentation, not implementation of those tickets.
+
+#### Exact-SHA GitHub Actions
+
+- GitHub contains Diary endpoint
+  `7cd5db5650ac55f88f583069b268bde17c2d32f5` and Personal Website endpoint
+  `973687f903c0d357d655f9e03d256427d238b2c3` exactly.
+- Diary `Backend checks` run
+  [31829971645](https://github.com/oscar940327/diary/actions/runs/31829971645)
+  was attempt 1 `completed/success` for the exact endpoint. Its `test` job
+  `94863063869` and every returned step were `completed/success`.
+- The Diary job log proves the cross-repository gate actually fetched
+  `oscar940327/my-personal-website`, requested ref
+  `973687f903c0d357d655f9e03d256427d238b2c3`, ran `git checkout --force` for
+  that SHA, resolved the same object, and reported `HEAD is now at 973687f Fix
+  Ticket 08 recovery reading anchor` before the successful Type-check and Test
+  steps.
+- Personal Website `Website checks and Pages` run
+  [31822618720](https://github.com/oscar940327/my-personal-website/actions/runs/31822618720)
+  and `pages build and deployment` run
+  [31822617972](https://github.com/oscar940327/my-personal-website/actions/runs/31822617972)
+  were attempt 1 `completed/success` for the exact Website SHA. All returned
+  build, deploy, and report-build-status jobs and steps succeeded.
+
+#### Complete local validation and command record
+
+- `python -m mypy src tests`: exit `0`, no issues in 21 source files.
+- `npm.cmd run typecheck`: exit `0`.
+- The first Browser command used an unquoted output path containing a space and
+  returned exit `1` with `No tests found`; no test executed and no result path
+  was created. The corrected mandatory command
+  `npm.cmd run test:e2e -- --workers=4 --retries=0 --output=<fresh-temp-path>`
+  ran the complete Chromium suite with exactly four workers and zero retries:
+  `36 passed in 19.9s`, command exit `0`. Three post-run Vite proxy messages
+  reported expected `ECONNREFUSED 127.0.0.1:8000` requests from mocked browser
+  cases; they did not fail the suite. The verified session-created temporary
+  result directory was removed afterward.
+- `npm.cmd run build`: exit `0`, 77 modules transformed and production output
+  built. It emitted 14 known informational warnings for existing classic
+  scripts without `type="module"`. `npm.cmd run verify:build`: exit `0` and
+  verified the preserved GitHub Pages output.
+- The initial combined CLI/Docker version probe was denied by the sandbox and
+  returned exit `1` before validation. Approved direct probes then returned
+  Supabase CLI `2.109.1` and Docker Engine `29.6.2 linux`, both exit `0`.
+- The first `npx.cmd supabase db reset --local` returned exit `1` because no
+  local stack was running. `npx.cmd supabase start` then returned exit `0`
+  with the known Windows analytics notice and CLI-update notice. The repeated
+  clean ordered `npx.cmd supabase db reset --local` returned exit `0`, applied
+  all 17 migrations through `20260809120000`, and seeded successfully.
+- `python -m pytest -q --tb=short tests/system/test_migration_upgrade.py`:
+  exit `0`, all five real-CLI migration regressions passed in `373.06s`.
+- The first complete `python -m pytest -q --tb=short` reused the already
+  repeatedly-reset stack and returned exit `1`: `79 passed, 7 failed, 1
+  warning in 428.23s`. Failures were local Auth/Kong lifecycle symptoms after
+  the preceding standalone migration run: `502` upstream responses, `503`
+  protected API responses, and missing owner seed state. This failed complete
+  run is preserved and is not reported as a pass.
+- The exact review-created stack was then stopped with
+  `npx.cmd supabase stop --no-backup`, exit `0`. The unchanged complete pytest
+  command was rerun from a stopped stack so its session fixture exclusively
+  owned start, reset, users, migrations, and stop. This authoritative clean-
+  lifecycle complete run returned exit `0`: `86 passed, 1 warning in 359.96s`.
+  The warning is the existing Starlette/httpx deprecation. A final Supabase
+  status check returned exit `1` because `supabase_db_diary` no longer existed,
+  confirming fixture teardown stopped the review-created stack.
+- Final tracked-state checks before documentation edits still showed both
+  repositories clean and aligned with their exact `origin/main` endpoints.
+
+#### Required next step
+
+- Ticket 08 remains `ready-for-agent` and is the only next implementation
+  work. A separate Ticket 08 TDD session must fix both blocking frontend
+  recovery ownership defects and add the required beyond-rank-80 and in-flight
+  intent regressions. It must preserve the metadata-only, revision, Calendar,
+  fresh-cursor, ADR 0013, and ADR 0016 boundaries above.
+- After fixes and exact-SHA CI, another fresh independent complete fixed-range
+  review is required. Ticket 09 cannot start until both review axes, complete
+  local suites, and exact-SHA Actions all pass in that future review.
