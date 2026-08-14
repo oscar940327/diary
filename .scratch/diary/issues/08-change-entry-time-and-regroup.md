@@ -4057,3 +4057,80 @@ found in either complete range.
   permitted next work is a separate Ticket 08 implementation/TDD session for
   the recovery reading-anchor reliability defect, followed by another fresh
   complete fixed-range review. Ticket 09 remains blocked.
+
+### 2026-08-15 - Implements the recovery reading-anchor blocker
+
+#### Starting gate and fixed implementation bases
+
+- Diary and Personal Website both began clean on `main`, each exactly aligned
+  with `origin/main` at zero commits ahead and behind.
+- `DIARY_FIX_BASE_SHA` was
+  `15039068c129487d0fb791f61dd1df975b72ecd4`. That exact review-documentation
+  commit was present on GitHub. Its exact-SHA Backend checks run
+  `31817810593` was attempt 1 `completed/success`; its only `test` job
+  `94823589241` and every returned step were `completed/success`.
+- `WEBSITE_FIX_BASE_SHA` was
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`.
+- The Personal Website implementation commit is
+  `973687f903c0d357d655f9e03d256427d238b2c3` (`Fix Ticket 08 recovery
+  reading anchor`). It is local only and was not pushed.
+
+#### TDD red and green evidence
+
+- The Chromium regression now installs a controlled unresolved
+  `document.fonts.ready`, waits until the recovered window and the existing
+  recovery callbacks have completed, then applies a deterministic `96px`
+  layout change above reading Entry A with browser scroll anchoring disabled.
+  The same case also verifies that later user wheel intent and Calendar/History
+  navigation retire restoration ownership before another layout change or an
+  old font callback can move the viewport.
+- On the base implementation, the exact delayed-layout case was run with
+  Playwright configured for Chromium, four workers and zero retries. Its one
+  selected test ran on one available worker and failed for the intended reason:
+  expected reading top `127.578125`, received `223.359375`, a `95.78125px`
+  displacement that remained through the assertion poll.
+- After the fix, that exact selected case passed `1 passed in 2.3s`. The four
+  high-pressure recovery cases then passed `4 passed in 4.6s`, and the complete
+  continuous-History file passed `17 passed in 8.6s`, all with Chromium, four
+  configured workers and zero retries.
+
+#### Implementation and ownership boundaries
+
+- Entry actions now preserve the reading snapshot before the `<details>` menu
+  changes layout. Anchor selection prefers the first Entry whose top is inside
+  the viewport, falling back to an Entry spanning the viewport only when no
+  Entry top is visible. Recovery therefore retains the same reading Entry and
+  exact offset rather than a nearly scrolled-away predecessor.
+- A recovery-only `ResizeObserver` follows the History surface and recovered
+  groups after the window is installed. It restores the owned anchor for later
+  layout changes without a longer timeout, pixel-tolerance relaxation, retry
+  loop, serial mode or worker reduction. Ordinary adjacent-page anchoring keeps
+  its existing short lifecycle.
+- Restoration shares History request-generation ownership. A newer History
+  request or Calendar navigation cancels the observer, animation frame and
+  delayed font callback. Wheel, touch, scroll-key, pointer and scrollbar intent
+  also cancel restoration before it can overwrite a newer owner position.
+- Existing request generations, `AbortController` ownership, fresh-snapshot
+  cursor rebuilding, Calendar refresh state, committed recovery state and
+  cleanup remain present. No migration, maintenance-window, Note Garden,
+  Ticket 09 or non-blocking cleanup file was changed.
+
+#### Complete validation and next step
+
+- Personal Website `npm.cmd run typecheck`, `npm.cmd run build` and
+  `npm.cmd run verify:build` all passed. Build emitted only the existing
+  informational non-module-script messages.
+- The complete Personal Website Chromium suite ran exactly four workers and
+  zero retries and passed `36 passed in 13.1s`.
+- Diary `python -m mypy src tests` passed with no issue in 21 source files.
+  The first sandboxed pytest attempt could not access the Docker named pipe or
+  local Supabase configuration and therefore failed before system setup; no
+  product assertion failed in that attempt. The unchanged complete command was
+  rerun with the required local Docker/Supabase access and passed
+  `86 passed, 1 warning in 357.00s`. The warning is the existing
+  Starlette/httpx deprecation. The session-created local stack was stopped;
+  `docker ps` returned no running container afterward.
+- Both repositories passed `git diff --check` before commit. No push, PR or
+  code-review was performed. Ticket 08 remains `ready-for-agent` pending a new
+  independent complete fixed-range review. Ticket 09 remains blocked and has
+  not started.
