@@ -3532,3 +3532,122 @@ No additional missing, partial, unasked-for or incorrectly implemented Ticket
   work is a separate Ticket 08 implementation/TDD session for the `071` to
   `091` migration boundary, followed by another fresh complete fixed-range
   review. Ticket 09 must not begin.
+
+### 2026-08-14 - Cross-migration 071 to 091 blocker fixed
+
+#### Session boundary, starting gate and TDD seam
+
+- This was a new Ticket 08 blocker implementation/TDD session limited to the
+  one High cross-migration finding in the latest formal review. It used the
+  complete repository `implement` and `tdd` instructions. It did not invoke or
+  begin a formal code review and does not claim that Ticket 08 passed review.
+- Diary began on `main` with local `HEAD`, local `origin/main` and GitHub
+  remote `main` all exactly
+  `3bd0e320f07e948acca48ba3a621223aa9907cb1`; Personal Website began on
+  `main` with all three refs exactly
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`. Both tracked worktrees were
+  clean. Any mismatch would have stopped the session.
+- The confirmed public seam was Supabase CLI v2.109.1 applying the real
+  ordered local migrations to PostgreSQL while a preceding-version
+  `create_diary_entry` call was queued at migration `071`'s explicit table
+  lock. No mock or migration-file reimplementation was used.
+
+#### Deterministic Red and root cause
+
+- The new regression reset to `20260805120000`, created one preceding unsafe
+  Entry, paused the real `071` transformation after it held
+  `SHARE ROW EXCLUSIVE`, and queued an actual preceding-version Create with
+  `9999-12-31T17:00:00Z`. PostgreSQL's lock queue deterministically let that
+  Create commit after `071` bookkeeping and before `091` obtained its lock.
+- With the original `091`, Red was `1 failed in 117.69s`, command wall
+  `119.11s`, exit `1`, zero retry and no hang. Durable state proved the exact
+  reviewed defect: `071` bookkeeping and its preceding-row audit/transform
+  were committed; `091` bookkeeping and CHECK were absent; the concurrent
+  unsafe Entry was present without an audit; and ordinary `migration up`
+  retry still failed because booked `071` did not rerun.
+- The root cause was the Supabase CLI v2.109.1 transaction boundary between
+  separately executed migration files. `071`'s correct CLI-owned transaction
+  and lock ended after its bookkeeping insert, leaving a write window before
+  the separately transacted original `091` CHECK.
+
+#### Minimal Green and transaction evidence
+
+- The only product change is in
+  `20260809120000_enforce_taipei_safe_entry_time_range.sql`. Its first
+  statement now explicitly locks `public.entries` in
+  `SHARE ROW EXCLUSIVE` mode. In the same CLI-owned transaction, `091`
+  extends the immutable audit's version constraint, records any gap Entry
+  with migration version `20260809120000`, applies the unchanged exact
+  24-hour subtraction, adds the Taipei-safe CHECK, replaces the two RPCs and
+  completes CLI bookkeeping.
+- No top-level `BEGIN`, `START TRANSACTION`, `COMMIT` or `ROLLBACK` was added.
+  Migration `20260807120000` retains its existing explicit lock and atomicity
+  without a diff. Migration `20260804120000` is also byte-for-byte unchanged.
+- The regression injects failure only at the `091` bookkeeping insert. It
+  proves the failed transaction rolls back the audit-version constraint,
+  gap audit, gap transformation, current history-position transformation,
+  Taipei-safe CHECK, RPC replacements and `091` bookkeeping together while
+  leaving already committed `071` intact. After removing the injection,
+  ordinary retry succeeds. A further `migration up` is a no-op, and exact
+  cardinalities prove one `071` bookkeeping row, one `091` bookkeeping row,
+  two source-specific audit rows, one concurrent Entry, one Revision, one AI
+  processing obligation and one current transformed history position.
+- The first Green product run had all five durable database assertions true
+  but a CLI diagnostic-string assertion failed because v2.109.1 did not
+  forward the PostgreSQL trigger message: `1 failed in 110.12s`, wall
+  `111.20s`, exit `1`. A combined-output variation failed for the same
+  harness-only reason: `1 failed in 112.11s`, wall `113.21s`, exit `1`.
+  Neither run retried or hung. The implementation-coupled diagnostic-string
+  assertion was removed while all durable behavior assertions were retained.
+- The corrected behavior regression passed `1 passed in 112.57s`, wall
+  `113.75s`, exit `0`. After direct audit-constraint rollback and Green-state
+  assertions were added, its final run passed `1 passed in 89.90s`, wall
+  `91.73s`, exit `0`. Both Green runs had zero retry and no hang.
+
+#### Required validation
+
+- An initial sandbox-only CLI attempt could not write its telemetry temp file:
+  wall `6.9s`, exit `1`, with no migration assertion, retry or hang. An
+  approved status check then returned pinned version `2.109.1` and correctly
+  reported that the stack was stopped. The formal standalone version check
+  returned exactly `2.109.1`, wall `1.46s`, exit `0`.
+- The session-owned stack started in wall `24.29s`, exit `0`. Clean ordered
+  reset applied all 17 migrations in order plus seed, wall `22.87s`, exit `0`,
+  zero retry and no hang.
+- The required existing real-CLI set passed `4 passed in 212.40s`, command
+  wall `213.48s`, exit `0`, zero retry and no hang. Individual call durations
+  were: `071` bookkeeping rollback/retry `47.40s`; unchanged `041`
+  bookkeeping rollback/retry `46.42s`; original previous-version concurrent
+  Create regression `46.10s`; upgrade-over-existing-data regression `45.47s`.
+- Final `python -m mypy src tests` found no issues in 21 source files, wall
+  `3.24s`, exit `0`. The final complete
+  `python -m pytest -q --tb=short` passed `86 passed, 1 warning in 337.01s`,
+  command wall `339.16s`, exit `0`, zero retry and no hang. The warning is the
+  existing Starlette/httpx deprecation. An earlier complete run before the
+  final catalog assertions also passed `86 passed, 1 warning in 303.31s`,
+  wall `304.48s`, exit `0`.
+
+#### Preserved contracts, cleanup and handoff
+
+- Audit reason, exact transformation, immutable trigger, RLS, grants,
+  PostgREST behavior, FastAPI validation/authorization, Entry metadata-only
+  semantics, Original Content, immutable Revisions and AI obligations remain
+  unchanged. The new audit row truthfully records `091` while preceding rows
+  retain `071`. The 2026-08-10 `041` FK/Create finding remains closed as a
+  false positive; the original concurrency regression stayed Green.
+- Personal Website remained clean and unchanged at its required SHA. Existing
+  Note Garden scope drift and duplicated-code/divergent-change findings were
+  not handled. Ticket 09, Trash/delete, AI Draft, Queue, RAG and Agent work
+  were not started. No PR was created.
+- The session-owned Supabase stack stopped in wall `19.99s`, exit `0`, and no
+  `supabase_*_diary` container remained. No named test output directory was
+  created: absolute checks confirmed Diary `test-results` and
+  `playwright-report` absent. The pre-existing ignored `.pytest_cache` was
+  left untouched; no user or pre-existing output directory was removed.
+- The scoped `091` migration, deterministic real-CLI regression and this
+  append-only record are the only files permitted in the implementation
+  commit. After push, that exact documentation/implementation commit's
+  Backend run and every returned job must reach `completed/success` before
+  handoff. This session is not a formal code review and cannot declare Ticket
+  08 PASS. The only permitted next step is a new complete fixed-range
+  code-review session; Ticket 09 remains blocked.

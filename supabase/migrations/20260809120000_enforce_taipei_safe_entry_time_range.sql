@@ -1,3 +1,48 @@
+do $$
+begin
+    lock table public.entries in share row exclusive mode;
+end;
+$$;
+
+alter table public.entry_time_migration_audits
+drop constraint entry_time_migration_audit_version;
+
+alter table public.entry_time_migration_audits
+add constraint entry_time_migration_audit_version
+check (
+    migration_version in ('20260807120000', '20260809120000')
+);
+
+insert into public.entry_time_migration_audits (
+    entry_id,
+    owner_id,
+    original_entry_at,
+    transformed_entry_at,
+    transformation_reason,
+    migration_version
+)
+select
+    entries.id,
+    entries.owner_id,
+    entries.entry_at,
+    entries.entry_at - interval '24 hours',
+    'Taipei-safe upper-bound remediation: active Entry Time shifted exactly 24 hours earlier',
+    '20260809120000'
+from public.entries
+where entries.entry_at
+    > '9999-12-31 15:59:59.999999+00'::timestamptz
+  and entries.entry_at
+    <= '9999-12-31 23:59:59.999999+00'::timestamptz
+on conflict (entry_id) do nothing;
+
+update public.entries
+set entry_at = entry_time_migration_audits.transformed_entry_at
+from public.entry_time_migration_audits
+where entries.id = entry_time_migration_audits.entry_id
+  and entries.entry_at = entry_time_migration_audits.original_entry_at
+  and entries.entry_at
+    > '9999-12-31 15:59:59.999999+00'::timestamptz;
+
 alter table public.entries
 add constraint entries_entry_at_taipei_grouping_safe_range
 check (

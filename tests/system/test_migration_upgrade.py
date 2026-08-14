@@ -16,8 +16,10 @@ PREVIOUS_SCHEMA_VERSION = "20260805120000"
 HISTORY_POSITION_PREVIOUS_SCHEMA_VERSION = "20260803120000"
 HISTORY_POSITION_SCHEMA_VERSION = "20260804120000"
 TRANSFORMATION_SCHEMA_VERSION = "20260807120000"
+TAIPEI_SAFETY_SCHEMA_VERSION = "20260809120000"
 MIGRATION_PAUSE_LOCK = 808_041_200
 CREATE_PAUSE_LOCK = 808_041_201
+CROSS_MIGRATION_PAUSE_LOCK = 808_071_091
 TRANSFORMATION_MIGRATION = (
     REPOSITORY_ROOT
     / "supabase"
@@ -627,6 +629,395 @@ def test_taipei_safety_upgrade_rolls_back_when_cli_bookkeeping_fails_and_retries
             safely_retried_once.stderr,
         )
     finally:
+        restore = _supabase_cli("db", "reset", "--local")
+        assert restore.returncode == 0, restore.stderr
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
+
+
+def test_taipei_safety_upgrade_closes_concurrent_create_gap_and_retries(
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    reset_previous = _supabase_cli(
+        "db",
+        "reset",
+        "--local",
+        "--version",
+        PREVIOUS_SCHEMA_VERSION,
+    )
+    assert reset_previous.returncode == 0, reset_previous.stderr
+
+    lock_controller: subprocess.Popen[str] | None = None
+    previous_create: subprocess.Popen[str] | None = None
+    upgrade: subprocess.Popen[str] | None = None
+    try:
+        _restore_auth_users(local_supabase)
+        _create_owner_registry(local_supabase)
+        _assert_owner_registry(local_supabase, owner_access_token)
+        preceding_unsafe_entry = _rpc_create(
+            local_supabase,
+            owner_access_token,
+            content="Unsafe Entry present before migration 071.",
+            entry_at="9999-12-31T16:00:00Z",
+            idempotency_key="upgrade-preceding-unsafe-entry",
+        )
+        preceding_unsafe_entry_id = cast(
+            str,
+            preceding_unsafe_entry["id"],
+        )
+
+        install_race_controls = _psql(
+            f"""
+            create function public.ticket08_pause_071_after_transform()
+            returns trigger
+            language plpgsql
+            as $$
+            begin
+                if not exists (
+                    select 1
+                    from supabase_migrations.schema_migrations
+                    where version = '{TRANSFORMATION_SCHEMA_VERSION}'
+                ) then
+                    perform pg_advisory_xact_lock(
+                        {CROSS_MIGRATION_PAUSE_LOCK}
+                    );
+                end if;
+                return null;
+            end;
+            $$;
+
+            create trigger ticket08_pause_071_after_transform
+            after update of entry_at on public.entries
+            for each statement
+            execute function public.ticket08_pause_071_after_transform();
+
+            create function public.ticket08_fail_091_bookkeeping()
+            returns trigger
+            language plpgsql
+            as $$
+            begin
+                if new.version = '{TAIPEI_SAFETY_SCHEMA_VERSION}' then
+                    raise exception
+                        'forced Ticket 08 migration 091 bookkeeping failure';
+                end if;
+                return new;
+            end;
+            $$;
+
+            create trigger ticket08_fail_091_bookkeeping
+            before insert on supabase_migrations.schema_migrations
+            for each row
+            execute function public.ticket08_fail_091_bookkeeping();
+            """
+        )
+        assert install_race_controls.returncode == 0, (
+            install_race_controls.stderr
+        )
+
+        lock_controller = _open_psql()
+        assert lock_controller.stdin is not None
+        lock_controller.stdin.write(
+            "set application_name = 'ticket08_071_091_controller';\n"
+            f"select pg_advisory_lock({CROSS_MIGRATION_PAUSE_LOCK});\n"
+        )
+        lock_controller.stdin.flush()
+        _wait_for_database_condition(
+            f"""
+            select (count(*) = 1)::integer
+            from pg_catalog.pg_locks
+            join pg_catalog.pg_stat_activity
+              on pg_stat_activity.pid = pg_locks.pid
+            where pg_stat_activity.application_name =
+                    'ticket08_071_091_controller'
+              and pg_locks.locktype = 'advisory'
+              and pg_locks.objid = {CROSS_MIGRATION_PAUSE_LOCK}
+              and pg_locks.granted;
+            """
+        )
+
+        upgrade = _start_migration_upgrade()
+        _wait_for_database_condition(
+            f"""
+            select count(*)
+            from pg_catalog.pg_locks
+            where pg_locks.locktype = 'advisory'
+              and pg_locks.objid = {CROSS_MIGRATION_PAUSE_LOCK}
+              and not pg_locks.granted;
+            """
+        )
+
+        previous_create = _open_psql()
+        assert previous_create.stdin is not None
+        previous_create.stdin.write(
+            "begin;\n"
+            "set application_name = 'ticket08_071_091_previous_create';\n"
+            "set local role authenticated;\n"
+            "select set_config(\n"
+            "  'request.jwt.claims',\n"
+            f"  '{{\"sub\":\"{OWNER_ID}\",\"role\":\"authenticated\"}}',\n"
+            "  true\n"
+            ");\n"
+            "select id from public.create_diary_entry(\n"
+            "  'Unsafe Create queued behind migration 071.',\n"
+            "  '9999-12-31T17:00:00Z',\n"
+            "  'upgrade-071-091-concurrent-create'\n"
+            ");\n"
+            "commit;\n"
+            "\\q\n"
+        )
+        previous_create.stdin.flush()
+        _wait_for_database_condition(
+            """
+            select (count(*) = 1)::integer
+            from pg_catalog.pg_locks
+            join pg_catalog.pg_stat_activity
+              on pg_stat_activity.pid = pg_locks.pid
+            where pg_stat_activity.application_name =
+                    'ticket08_071_091_previous_create'
+              and pg_locks.relation = 'public.entries'::regclass
+              and pg_locks.mode = 'RowExclusiveLock'
+              and not pg_locks.granted;
+            """
+        )
+
+        lock_controller.stdin.write(
+            f"select pg_advisory_unlock({CROSS_MIGRATION_PAUSE_LOCK});\n"
+        )
+        lock_controller.stdin.flush()
+        previous_create_stdout, previous_create_stderr = (
+            previous_create.communicate(timeout=30)
+        )
+        assert previous_create.returncode == 0, (
+            previous_create_stdout,
+            previous_create_stderr,
+        )
+
+        upgrade_stdout, upgrade_stderr = upgrade.communicate(timeout=120)
+        assert upgrade.returncode != 0, (upgrade_stdout, upgrade_stderr)
+        rollback_state = _database_condition_is_true(
+            _psql(
+                f"""
+                select (
+                    (
+                        select count(*) = 1
+                        from supabase_migrations.schema_migrations
+                        where version = '{TRANSFORMATION_SCHEMA_VERSION}'
+                    )
+                    and (
+                        select count(*) = 0
+                        from supabase_migrations.schema_migrations
+                        where version = '{TAIPEI_SAFETY_SCHEMA_VERSION}'
+                    )
+                    and not exists (
+                        select 1
+                        from pg_catalog.pg_constraint
+                        where conrelid = 'public.entries'::regclass
+                          and conname =
+                            'entries_entry_at_taipei_grouping_safe_range'
+                    )
+                    and position(
+                        '{TAIPEI_SAFETY_SCHEMA_VERSION}' in (
+                            select pg_get_constraintdef(oid)
+                            from pg_catalog.pg_constraint
+                            where conrelid =
+                                'public.entry_time_migration_audits'::regclass
+                              and conname =
+                                'entry_time_migration_audit_version'
+                        )
+                    ) = 0
+                    and (
+                        select count(*) = 1
+                        from public.entry_time_migration_audits
+                        where entry_id =
+                            '{preceding_unsafe_entry_id}'::uuid
+                          and original_entry_at =
+                            '9999-12-31T16:00:00Z'::timestamptz
+                          and transformed_entry_at =
+                            '9999-12-30T16:00:00Z'::timestamptz
+                    )
+                    and (
+                        select count(*) = 1
+                        from public.entries
+                        where idempotency_key =
+                            'upgrade-071-091-concurrent-create'
+                          and entry_at =
+                            '9999-12-31T17:00:00Z'::timestamptz
+                    )
+                    and not exists (
+                        select 1
+                        from public.entry_time_migration_audits
+                        where original_entry_at =
+                            '9999-12-31T17:00:00Z'::timestamptz
+                    )
+                )::integer;
+                """
+            )
+        )
+
+        remove_race_controls = _psql(
+            """
+            drop trigger ticket08_pause_071_after_transform
+                on public.entries;
+            drop function public.ticket08_pause_071_after_transform();
+            drop trigger ticket08_fail_091_bookkeeping
+                on supabase_migrations.schema_migrations;
+            drop function public.ticket08_fail_091_bookkeeping();
+            """
+        )
+        assert remove_race_controls.returncode == 0, (
+            remove_race_controls.stderr
+        )
+
+        retry = _supabase_cli("migration", "up", "--local")
+        retry_succeeded = retry.returncode == 0
+        effects_applied_once = _database_condition_is_true(
+            _psql(
+                f"""
+                select (
+                    (
+                        select count(*) = 1
+                        from supabase_migrations.schema_migrations
+                        where version = '{TRANSFORMATION_SCHEMA_VERSION}'
+                    )
+                    and (
+                        select count(*) = 1
+                        from supabase_migrations.schema_migrations
+                        where version = '{TAIPEI_SAFETY_SCHEMA_VERSION}'
+                    )
+                    and (
+                        select count(*) = 1
+                        from pg_catalog.pg_constraint
+                        where conrelid = 'public.entries'::regclass
+                          and conname =
+                            'entries_entry_at_taipei_grouping_safe_range'
+                          and convalidated
+                    )
+                    and position(
+                        '{TAIPEI_SAFETY_SCHEMA_VERSION}' in (
+                            select pg_get_constraintdef(oid)
+                            from pg_catalog.pg_constraint
+                            where conrelid =
+                                'public.entry_time_migration_audits'::regclass
+                              and conname =
+                                'entry_time_migration_audit_version'
+                        )
+                    ) > 0
+                    and not exists (
+                        select 1
+                        from public.entries
+                        where entry_at >
+                            '9999-12-31 15:59:59.999999+00'::timestamptz
+                    )
+                    and (
+                        select count(*) = 2
+                        from public.entry_time_migration_audits
+                    )
+                    and (
+                        select count(*) = 1
+                        from public.entry_time_migration_audits
+                        where original_entry_at =
+                            '9999-12-31T17:00:00Z'::timestamptz
+                          and transformed_entry_at =
+                            '9999-12-30T17:00:00Z'::timestamptz
+                          and migration_version =
+                            '{TAIPEI_SAFETY_SCHEMA_VERSION}'
+                    )
+                    and (
+                        select count(*) = 1
+                        from public.entries
+                        where idempotency_key =
+                            'upgrade-071-091-concurrent-create'
+                          and entry_at =
+                            '9999-12-30T17:00:00Z'::timestamptz
+                    )
+                    and (
+                        select count(*) = 1
+                        from public.entry_history_positions
+                        join public.entries
+                          on entries.id = entry_history_positions.entry_id
+                        where entries.idempotency_key =
+                            'upgrade-071-091-concurrent-create'
+                          and entry_history_positions.valid_until_xid is null
+                          and entry_history_positions.entry_at =
+                            '9999-12-30T17:00:00Z'::timestamptz
+                    )
+                    and (
+                        select count(*) = 1
+                        from public.entry_revisions
+                        join public.entries
+                          on entries.id = entry_revisions.entry_id
+                        where entries.idempotency_key =
+                            'upgrade-071-091-concurrent-create'
+                    )
+                    and (
+                        select count(*) = 1
+                        from public.ai_processing
+                        join public.entry_revisions
+                          on entry_revisions.id =
+                            ai_processing.entry_revision_id
+                        join public.entries
+                          on entries.id = entry_revisions.entry_id
+                        where entries.idempotency_key =
+                            'upgrade-071-091-concurrent-create'
+                    )
+                )::integer;
+                """
+            )
+        )
+        repeat_succeeded = False
+        repeated_effects_unchanged = False
+        if retry_succeeded:
+            repeat = _supabase_cli("migration", "up", "--local")
+            repeat_succeeded = repeat.returncode == 0
+            repeated_effects_unchanged = _database_condition_is_true(
+                _psql(
+                    f"""
+                    select (
+                        (
+                            select count(*) = 1
+                            from supabase_migrations.schema_migrations
+                            where version =
+                                '{TAIPEI_SAFETY_SCHEMA_VERSION}'
+                        )
+                        and (
+                            select count(*) = 2
+                            from public.entry_time_migration_audits
+                        )
+                        and (
+                            select count(*) = 1
+                            from public.entry_history_positions
+                            join public.entries
+                              on entries.id =
+                                entry_history_positions.entry_id
+                            where entries.idempotency_key =
+                                'upgrade-071-091-concurrent-create'
+                              and entry_history_positions.valid_until_xid
+                                is null
+                        )
+                    )::integer;
+                    """
+                )
+            )
+
+        evidence = {
+            "failure_rolled_back_091_only": rollback_state,
+            "retry_succeeded": retry_succeeded,
+            "effects_applied_once": effects_applied_once,
+            "repeat_succeeded": repeat_succeeded,
+            "repeated_effects_unchanged": repeated_effects_unchanged,
+        }
+        assert evidence == {
+            "failure_rolled_back_091_only": True,
+            "retry_succeeded": True,
+            "effects_applied_once": True,
+            "repeat_succeeded": True,
+            "repeated_effects_unchanged": True,
+        }, (evidence, upgrade_stdout, upgrade_stderr, retry.stderr)
+    finally:
+        _stop_process(previous_create)
+        _stop_process(upgrade)
+        _stop_process(lock_controller)
         restore = _supabase_cli("db", "reset", "--local")
         assert restore.returncode == 0, restore.stderr
         _restore_auth_users(local_supabase)
