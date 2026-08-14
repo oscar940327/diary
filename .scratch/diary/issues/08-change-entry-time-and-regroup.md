@@ -3344,3 +3344,191 @@ No additional missing, partial, unasked-for or incorrectly implemented Ticket
   are recorded in the completion handoff after every job at that SHA reaches
   `completed/success`. The only permitted next step is another new Ticket 08
   formal fixed-range code-review session; Ticket 09 remains blocked.
+
+### 2026-08-14 - Fresh formal fixed-range code review finds a cross-migration blocker
+
+#### Session contract, starting gate and verdict
+
+- This was a new review-only session under the repository `code-review`
+  skill. Two isolated read-only agents reviewed Standards and Spec in
+  parallel against both complete integrated ranges. The latest Diary
+  blocker-fix subrange received additional inspection but did not replace the
+  complete review. No product, migration, test or Website file was modified.
+- Diary began on `main` with local `HEAD`, local `origin/main` and GitHub
+  remote `main` all exactly
+  `04d68d4836686b568100c0eb81fe96c421f89ecb`; Personal Website began on
+  `main` with all three refs exactly
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`. Both tracked worktrees were
+  clean. Any mismatch would have stopped the session.
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**.
+  - Standards: **CHANGES-REQUIRED**, one High blocking hard violation.
+  - Spec: **CHANGES-REQUIRED**, one High blocking defect.
+  - Both axes independently identify the same underlying defect; it is one
+    implementation task, but the axes remain separately reported and do not
+    cancel or rerank one another.
+- This review does **not** claim Ticket 08 PASS. Ticket 08 remains
+  `ready-for-agent`, and Ticket 09 remains blocked.
+
+#### Fixed ranges and preflight
+
+- Diary integrated range:
+  `898a6056068ce282e36399d568ea6350bb413f29...04d68d4836686b568100c0eb81fe96c421f89ecb`.
+  Both endpoints resolved, the merge-base is the specified base, the diff is
+  non-empty with 24 commits, and complete-range `git diff --check` returned
+  `0`. It contains 14 changed files, 7,684 insertions and 30 deletions.
+- Personal Website integrated range:
+  `231ebe21ed09ec7d777f3c78ed6eb58aab396962...b6d61fdea942f5445bce59e4c6cc2baeb486ae93`.
+  Both endpoints resolved, the merge-base is the specified base, the diff is
+  non-empty with 11 commits, and complete-range `git diff --check` returned
+  `0`. It contains 11 changed files, 3,319 insertions and 69 deletions.
+- Diary blocker-fix subrange:
+  `54ab40a3a838e8228a0271339434a95bd6079b91...04d68d4836686b568100c0eb81fe96c421f89ecb`.
+  It resolves to one commit, is non-empty, and subrange `git diff --check`
+  returned `0`. Its only changed files are this Ticket record, migration
+  `20260807120000` and the real migration-upgrade regression.
+
+#### Standards review - CHANGES-REQUIRED
+
+1. **High - blocking hard violation - a previous-version Create can strand
+   the upgrade between migrations `071` and `091`.** Migration
+   `supabase/migrations/20260807120000_audit_and_transform_taipei_unsafe_entry_times.sql:103-137`
+   correctly holds `SHARE ROW EXCLUSIVE` through its own CLI-owned transaction
+   and `schema_migrations` insert. Supabase CLI v2.109.1, however, applies
+   pending files with separate `ExecBatch` transactions. That transaction and
+   lock end before
+   `supabase/migrations/20260809120000_enforce_taipei_safe_entry_time_range.sql:1-6`
+   requests the lock needed to add its tighter CHECK.
+
+   A previous-version Create already queued behind `071` can therefore obtain
+   `RowExclusiveLock` immediately after `071` commits, while migration `051`'s
+   RPC still accepts `9999-12-31T16:00:00Z`. The Create commits before queued
+   `091` validation; `091` then fails. Because `071` bookkeeping already
+   committed, ordinary retry skips its audit/transformation and fails again on
+   the stranded row. This violates ADR 0013's expand-contract,
+   previous-version compatibility, migration-failure and safe-retry rules.
+
+- No other included Standards finding was found. Per the explicit review
+  boundary, the existing Note Garden scope drift and existing Duplicated Code
+  and Divergent Change judgements were not handled or reported as new work.
+
+#### Spec review - CHANGES-REQUIRED
+
+1. **High - blocking - the `051` to `071` to `091` contract is not safe under
+   a concurrent previous-version Create.** Ticket 08 requires migration-safe
+   Entry Time transformation while the immediately previous application
+   remains usable. The product spec requires transactional migration failure
+   to stop release before promotion, and ADR 0013 requires safe
+   expand-contract compatibility. The cross-file transaction boundary above
+   leaves a write window that creates a persistent, non-retryable failed
+   upgrade. Existing regressions cover data present before `071`, `071`
+   bookkeeping failure, and the separate `041` concurrency question; none
+   covers an unsafe Create queued at the `071` to `091` boundary.
+
+- No other missing, partial, unasked-for or incorrectly implemented Ticket 08
+  behavior was found within the requested boundary. Existing Note Garden,
+  duplicated-code and divergent-change findings were explicitly excluded.
+
+#### Atomicity and invariant dispositions
+
+- **`071` statements plus bookkeeping: PASS within one migration.** The
+  latest fix removes top-level `BEGIN`/`COMMIT`, retains the explicit lock in
+  one `DO` statement, and lets PostgreSQL hold the lock through the CLI-owned
+  transaction and bookkeeping insert. The version-specific real CLI
+  regression proves product DDL, audit data, Entry transformation, current
+  history transformation and bookkeeping roll back together, then retry
+  produces exactly one bookkeeping row, audit row, transformed Entry and
+  current position.
+- **Cross-migration `071` to `091` safety: FAIL.** The `071` lock cannot protect
+  the gap after its own committed bookkeeping and before the separately
+  transacted `091` constraint. A fix needs to close that write window and add
+  a real CLI regression with a preceding-version-valid but Taipei-unsafe
+  concurrent Create.
+- **`041` rollback/retry fix: unchanged and PASS.** The latest subrange has no
+  diff for `20260804120000_change_entry_time_and_stabilize_history.sql`; its
+  own explicit lock, atomic bookkeeping regression and safe retry remain
+  green.
+- **2026-08-10 FK/Create finding: remains closed as a false positive.** The
+  deterministic `041` previous-version concurrent Create regression remains
+  green. The new finding is a different `071` to `091` transaction-boundary
+  race and does not reopen the old FK/backfill/trigger allegation.
+- Audit schema and immutable evidence semantics, RLS, grants, direct PATCH
+  denial, PostgREST owner-token behavior, FastAPI validation/authorization,
+  Entry transformation rules, capture time, Original Content, immutable Entry
+  Revisions and AI processing obligations show no additional drift.
+
+#### Independent runtime proof of the blocking race
+
+- A no-file-change local PostgreSQL/CLI probe reset to migration `051`, paused
+  `071` after it held `SHARE ROW EXCLUSIVE`, and queued the actual
+  previous-version `create_diary_entry` RPC with Entry Time
+  `9999-12-31T16:00:00Z`.
+- Releasing `071` produced Create exit `0` and first-upgrade exit `1`. The
+  exact stranded state was `071` bookkeeping count one, `091` bookkeeping
+  count zero, one unsafe active Entry and no audit row for it. Ordinary
+  `migration up` retry again exited `1` because booked `071` did not rerun.
+- Probe wall was `47.89s`, with zero harness retry and no hang. Its deliberate
+  ordinary migration retry reproduced the same exit `1`; cleanup clean reset
+  returned `0`. It created no repository or output file.
+
+#### Exact endpoint GitHub Actions
+
+- [Backend checks run 31728057908](https://github.com/oscar940327/diary/actions/runs/31728057908)
+  is attempt 1 `completed/success` at exact reviewed Diary SHA
+  `04d68d4836686b568100c0eb81fe96c421f89ecb`.
+- Its complete returned job list contains only
+  [test job 94541286541](https://github.com/oscar940327/diary/actions/runs/31728057908/job/94541286541),
+  which is `completed/success`; every returned step is also
+  `completed/success`.
+
+#### Required local validation
+
+- Pinned `npx.cmd supabase --version` returned `2.109.1`, wall `1.79s`, exit
+  `0`. An initial sandbox-only attempt could not write the CLI telemetry temp
+  file: wall `13.76s`, exit `1`, no migration assertion, retry or hang. The
+  first status check after that found Docker stopped: wall `6.61s`, exit `1`,
+  no product assertion or hang.
+- The session-started stack completed clean ordered reset of all 17 migrations
+  plus seed: wall `35.56s`, exit `0`, zero retry and no hang.
+- `071` bookkeeping rollback/retry regression: `1 passed in 108.72s`; setup
+  `39.92s`, call `68.76s`, command wall `111.91s`, exit `0`, zero retry and no
+  hang.
+- Unchanged `041` bookkeeping rollback/retry regression: `1 passed in
+  106.62s`; setup `36.84s`, call `69.75s`, command wall `107.70s`, exit `0`,
+  zero retry and no hang.
+- Previous-version concurrent Create regression: `1 passed in 105.20s`;
+  setup `37.89s`, call `67.27s`, teardown `0.01s`, command wall `106.53s`,
+  exit `0`, zero retry and no hang.
+- Upgrade-over-existing-data regression completed its product assertions but
+  first received local Kong/Auth `502` during teardown user restoration:
+  `1 failed in 103.40s`, wall `104.45s`, exit `1`. This was one recorded
+  infrastructure retry, not a product assertion failure. After the unhealthy
+  stack was stopped, the fixture-owned clean lifecycle passed `1 passed in
+  108.68s`; setup `49.43s`, call `46.78s`, teardown `12.42s`, wall `109.70s`,
+  exit `0`. Neither run hung.
+- `python -m mypy src tests`: no issues in 21 source files, wall `2.34s`, exit
+  `0`.
+- Complete `python -m pytest -q --tb=short`: `85 passed, 1 warning in
+  298.19s`, command wall `299.25s`, exit `0`, zero retry and no hang. The one
+  warning is the existing Starlette/httpx deprecation. This run exercised the
+  real Supabase Auth/PostgreSQL/PostgREST, forced RLS, FastAPI, Uvicorn and
+  mobile Chromium paths.
+
+#### Scope, cleanup and handoff
+
+- No session-created named output directory required removal. Diary
+  `.pytest_cache` and Personal Website `test-results` existed before this
+  session and were deliberately left untouched. Diary `test-results` and both
+  `playwright-report` paths remained absent.
+- The session-owned Supabase stack was stopped; absolute container inspection
+  returned zero `supabase_*_diary` containers. Both tracked worktrees were
+  clean at their reviewed endpoints before this EOF append.
+- This append-only Ticket record is the session's only file change. No PR was
+  created. Ticket 09, Trash/delete, AI Draft, Queue, RAG and Agent work were
+  not started. The existing Note Garden, duplicated-code and divergent-change
+  findings were not handled.
+- Only this documentation record may be committed and pushed. Its exact-SHA
+  Backend run and every returned job must reach `completed/success` before
+  handoff. Because both review axes have a blocking finding, the next allowed
+  work is a separate Ticket 08 implementation/TDD session for the `071` to
+  `091` migration boundary, followed by another fresh complete fixed-range
+  review. Ticket 09 must not begin.
