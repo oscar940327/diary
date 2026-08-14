@@ -4134,3 +4134,18 @@ found in either complete range.
   code-review was performed. Ticket 08 remains `ready-for-agent` pending a new
   independent complete fixed-range review. Ticket 09 remains blocked and has
   not started.
+
+### 2026-08-15 - Cross-repository CI pin updated for recovery-anchor fix
+
+- The recovery-anchor implementation SHA is
+  `973687f903c0d357d655f9e03d256427d238b2c3`.
+- Personal Website `Website checks and Pages` and Pages deployment passed for
+  that implementation.
+- The prior Diary CI still tested the old Personal Website SHA
+  `b6d61fdea942f5445bce59e4c6cc2baeb486ae93`, so it did not validate the
+  recovery-anchor fix.
+- Diary CI now pins the corrected Personal Website SHA
+  `973687f903c0d357d655f9e03d256427d238b2c3` exactly.
+- This is not a Passed verdict. Ticket 08 remains `ready-for-agent` pending a
+  new Diary Action against the matching Website SHA and a fresh independent
+  complete fixed-range review. Ticket 09 has not started.

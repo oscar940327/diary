@@ -342,14 +342,9 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 08 Entry Time mutation is implemented but remains `ready-for-agent` and
-has not passed review. Its latest fresh formal review reported a High
-same-Entry write gap between migrations `071` and `091` under the former
-assumption that the preceding backend could keep writing during migration.
-ADR 0016 now excludes that concurrency from the production contract by
-requiring a drained Diary-only maintenance window. This is a boundary decision,
-not a claim that the reviewed migration code fixed the finding. The next and
-only Ticket 08 step is complete validation followed by a fresh independent
-fixed-range review against the formal no-concurrent-writes migration boundary.
-Ticket 09 must not begin, and Ticket 08 must not be marked Passed, until that
-review passes.
+The Maintenance Window decision is now effective, and the Ticket 08
+recovery-anchor blocker has been implemented in Personal Website commit
+`973687f903c0d357d655f9e03d256427d238b2c3`. The next gate is a new Diary CI
+run that pins and tests that exact Website SHA, followed by a fresh independent
+complete fixed-range review. Ticket 08 remains `ready-for-agent` and must not
+be marked Passed before those gates succeed. Ticket 09 has not started.
