@@ -11,6 +11,8 @@
 - [ ] GitHub Actions authenticates with repository- and release-context-restricted OIDC rather than a long-lived Azure client secret.
 - [ ] Key Vault Standard, managed identity, least-privilege role assignments, and application secret references are provisioned without committing secret values.
 - [ ] FastAPI runs on Container Apps Consumption with public HTTPS ingress, `minReplicas = 0`, `maxReplicas = 1`, and the private commit-SHA GHCR image.
+- [ ] The deployment provides an operator-controlled Diary maintenance gate that stops admission of every Diary API read and write with an explicit temporary-unavailability response while leaving health verification and non-Diary personal-site pages available.
+- [ ] Maintenance entry exposes enough sanitized operational state to prove new requests are closed and all in-flight API requests have drained before migration begins.
 - [ ] GHCR pull uses a dedicated package-read credential held as an Azure secret; Azure Container Registry is not provisioned.
 - [ ] Production configuration uses the selected Supabase project, backend-only `SUPABASE_SECRET_KEY`, singleton owner registry, exact GitHub Pages CORS origin, and Azure-generated API hostname.
 - [ ] Structured `INFO` console logging reaches a 30-day Log Analytics workspace; Application Insights is absent.

@@ -3844,3 +3844,57 @@ behavior was found in either complete range.
   work is a new Ticket 08 blocker implementation/TDD session for the
   same-Entry `071→091` previous-version Change gap, followed later by another
   fresh complete fixed-range review. Ticket 09 remains blocked.
+
+### 2026-08-14 - Maintenance-window architecture decision changes the formal migration boundary
+
+#### Decision and historical finding disposition
+
+- ADR 0016 now requires every production release containing a database schema
+  migration to enter a Diary-only maintenance window. The release stops
+  accepting all new Diary API reads and writes, drains in-flight requests,
+  quiesces write-capable background workloads, verifies a backup, applies and
+  validates migrations, verifies and deploys the selected version, and exits
+  maintenance only after protected smoke checks pass. Other personal-site
+  pages remain available.
+- Every prior Ticket 08 implementation note, failed review, finding, probe and
+  validation record above is preserved. In particular, the latest High
+  same-Entry `071` to `091` finding remains an accurate finding under its
+  reviewed assumption that the preceding-version Change RPC could write
+  between migration files. No product code, migration, or test has been
+  changed in this decision session, and this record does not claim that the
+  latest finding was fixed in code.
+- The formal production contract no longer permits that assumption: request
+  draining and writer quiescence must complete before migrations begin, and
+  neither the old nor new backend may write during migration execution. The
+  same-Entry migration gap is therefore excluded by the maintenance deployment
+  contract rather than repaired by a concurrent-writer implementation.
+- ADR 0013 remains in force. Expand-contract sequencing and compatibility with
+  the immediately previous application version are still required across the
+  stable pre-migration and post-migration schema states so rollback remains
+  possible. That compatibility does not authorize parallel writes during the
+  migration window. Zero-downtime database migration is not an MVP requirement.
+
+#### Ticket status and next review
+
+- Ticket 08 remains `ready-for-agent` and **REVIEW-FAILED /
+  CHANGES-REQUIRED**. It is not Passed. Ticket 09 has not started and remains
+  blocked.
+- The latest same-Entry evidence is not deleted or relabeled as a false
+  positive. A fresh reviewer must assess it against ADR 0016's explicit
+  no-concurrent-writes production boundary while retaining it as evidence of
+  why the maintenance contract is required.
+- Before review, Ticket 08 must receive complete validation with migration
+  execution evaluated only after admission is closed, in-flight requests are
+  drained, and write-capable workloads are quiescent. Implementing the Azure
+  maintenance mechanism belongs to the later deployment tickets; Ticket 08
+  must establish and honor the no-concurrent-writes boundary. The existing
+  Ticket 03-08 behavior and migration, FastAPI, database, browser, type, and
+  complete regression suites remain required; the boundary change is not a
+  waiver for any non-concurrency invariant.
+- The next code review must be a new independent complete fixed-range review
+  from the original Ticket 08 bases through the documentation-decision
+  endpoint in Diary and the unchanged integrated Ticket 08 endpoint in
+  Personal Website. Both Standards and Spec axes must inspect the complete
+  ranges. Ticket 08 may be marked Passed only if that full validation is
+  present and the fresh review reports no blocking finding under the formal
+  boundary.

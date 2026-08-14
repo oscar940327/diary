@@ -10,6 +10,7 @@
 - [ ] The Diary application loads directly at the GitHub Pages origin and calls the configured Azure HTTPS API.
 - [ ] Authentication redirects return to Diary and production CORS accepts the published origin.
 - [ ] Existing HOME, PROJECT, JOURNEY, MktAgent, VideoNote, assets, and animations remain functional and are not migrated to React.
+- [ ] During a schema-changing Diary release, desktop and mobile Diary surfaces present a clear temporary-maintenance state while HOME, PROJECT, JOURNEY, MktAgent, VideoNote, and other non-Diary pages remain usable.
 - [ ] Desktop and narrow mobile browser runs complete login, capture, history, calendar jump, Original Content edit, Entry Time change, Trash, and restore.
 - [ ] Browser runs also complete AI Correction, direct search, Agent question, Conversation reopen, and citation navigation.
 - [ ] A budget-blocked browser case shows continued capture, direct text search, recovery status, and temporary Agent unavailability.

@@ -112,13 +112,17 @@ Items in this section are directions, not commitments to the first MVP.
 - API and AI-processing workloads released together use the same immutable commit-SHA image version.
 - Handoff must include an owner-oriented deployment and rollback runbook, plus a guided exercise in starting a release, identifying the active revision, reading failures, and restoring the previous revision.
 - Supabase PostgreSQL schema changes are committed as ordered, versioned SQL migrations and are not performed as undocumented manual production edits.
+- A production release containing a database schema migration uses a short Diary-only maintenance window; all non-Diary personal-site pages remain available.
+- Maintenance entry stops new Diary API reads and writes, drains in-flight requests, and quiesces write-capable Diary background workloads before backup or migration begins.
+- Old and new Diary backend versions do not write concurrently while production migrations execute.
 - A release containing a production schema change creates and verifies an additional pre-migration logical backup before applying the migration.
 - Production migrations follow an expand-contract policy: first add backward-compatible structures, deploy code that tolerates the transition, migrate or backfill data, and remove obsolete structures only in a later release.
 - Destructive schema changes are not bundled into the release that first stops using the affected structure.
 - The immediately previous application revision must remain compatible with the migrated schema so blue-green traffic rollback remains usable.
 - Normal rollback switches application traffic and related workload versions but does not automatically run a down migration or restore the production database.
 - Full database restore is reserved for disaster recovery because using it as an ordinary release rollback could discard Entries created after the backup.
-- A failed migration stops the release before production traffic moves to the new revision; transactional migration behavior is used where PostgreSQL supports it.
+- A failed migration or release verification keeps Diary in maintenance with traffic closed; transactional rollback is used where PostgreSQL supports it, otherwise the existing recovery runbook governs recovery.
+- Diary resumes only after migration, data, API, worker, deployment-version, and protected smoke verification succeed.
 - Production backend secrets are stored in Azure Key Vault Standard rather than committed files or direct secret values in Bicep parameter files.
 - FastAPI, Container Apps Jobs, and other required Azure workloads read Key Vault secrets through managed identities with least-privilege access.
 - Container Apps consumes Key Vault references as secret-backed environment variables; application code does not receive credentials for accessing Key Vault.
@@ -309,7 +313,7 @@ Items in this section are directions, not commitments to the first MVP.
 
 ## Current MVP boundary
 
-The MVP is a publicly reachable but owner-only web application, so unauthenticated access to personal records and mutation APIs is prohibited. It uses Supabase Auth with a single pre-created owner identity, passwordless email login, and no public sign-up. Secrets remain on the backend. FastAPI runs on Azure Container Apps Consumption with scale-to-zero and at most one replica. Original Content is saved and displayed before automatic asynchronous AI processing; AI failures are visible and retryable but never invalidate an Entry. The product includes a continuously scrollable, date-grouped history that displays the complete Original Content of each Entry across adjacent days. A calendar provides an alternative view and navigation method: selecting a date switches to the continuous history at that position. Each Entry places its compact, collapsible, and editable AI Draft or AI Correction below the Original Content. User correction must not overwrite Original Content or silently replace a prior AI Correction. The MVP also includes an Insight Agent that retrieves Original Content with RAG before asking an LLM to synthesize a cited answer. Other long-term capabilities must not be treated as MVP requirements until explicitly selected.
+The MVP is a publicly reachable but owner-only web application, so unauthenticated access to personal records and mutation APIs is prohibited. It uses Supabase Auth with a single pre-created owner identity, passwordless email login, and no public sign-up. Secrets remain on the backend. FastAPI runs on Azure Container Apps Consumption with scale-to-zero and at most one replica. Schema-changing releases may briefly place Diary in maintenance after draining requests and before verified migration and deployment; zero-downtime database migration and concurrent old/new writes during migration are not MVP requirements, while non-Diary personal-site pages remain available. Original Content is saved and displayed before automatic asynchronous AI processing; AI failures are visible and retryable but never invalidate an Entry. The product includes a continuously scrollable, date-grouped history that displays the complete Original Content of each Entry across adjacent days. A calendar provides an alternative view and navigation method: selecting a date switches to the continuous history at that position. Each Entry places its compact, collapsible, and editable AI Draft or AI Correction below the Original Content. User correction must not overwrite Original Content or silently replace a prior AI Correction. The MVP also includes an Insight Agent that retrieves Original Content with RAG before asking an LLM to synthesize a cited answer. Other long-term capabilities must not be treated as MVP requirements until explicitly selected.
 
 ## Explicitly out of scope
 
@@ -329,6 +333,8 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 - Images, file attachments, voice input, and speech-to-text
 - Native iOS or Android applications
 - Offline mode and offline synchronization
+- Zero-downtime database schema migration
+- Concurrent old-version and new-version backend writes while a production migration executes
 - Automatic Trash purging
 - A separate LLM reranker
 - AI modification of Original Content
@@ -336,13 +342,14 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 07 historical Entry Revision restoration is complete. Its fresh
-fixed-range review passed both axes with no blocking finding: Standards passed
-with four non-blocking maintainability judgements, and Spec passed with no
-finding. The reviewed ranges were Diary
-`eda071b58a04bf0fa7358b80e0a65e94f4068874...c42d0f5f54586c62494c77b99838bb11b372119d`
-and Personal Website
-`e41ee0ad9e6b1cd3cec2e05eb079cfdea8b942dd...231ebe21ed09ec7d777f3c78ed6eb58aab396962`.
-Ticket 08 Entry Time mutation has not started. It may begin only in a separate
-implementation session after this review-documentation commit is pushed and
-its exact-SHA GitHub Actions run succeeds.
+Ticket 08 Entry Time mutation is implemented but remains `ready-for-agent` and
+has not passed review. Its latest fresh formal review reported a High
+same-Entry write gap between migrations `071` and `091` under the former
+assumption that the preceding backend could keep writing during migration.
+ADR 0016 now excludes that concurrency from the production contract by
+requiring a drained Diary-only maintenance window. This is a boundary decision,
+not a claim that the reviewed migration code fixed the finding. The next and
+only Ticket 08 step is complete validation followed by a fresh independent
+fixed-range review against the formal no-concurrent-writes migration boundary.
+Ticket 09 must not begin, and Ticket 08 must not be marked Passed, until that
+review passes.

@@ -9,10 +9,12 @@
 - [ ] Bicep provisions Queue and private Blob resources in the same selected Azure region as the backend where supported.
 - [ ] FastAPI publishes opaque work identifiers to Queue without including Original Content or prompts.
 - [ ] The worker runs as an event-driven Container Apps Job with zero minimum executions and no more than one concurrent execution.
+- [ ] Schema-changing release controls pause new worker executions and drain or stop active write-capable work before migration; no old or new worker writes while migrations execute.
 - [ ] API and worker deployments use artifacts from the same selected commit SHA.
 - [ ] Managed identity and Key Vault references grant only the storage and secret access each workload requires.
 - [ ] Production OpenRouter model, privacy, and separate-key configuration is injected without appearing in image layers, deployment output, or logs.
 - [ ] Duplicate Queue delivery, worker interruption, and unsent-work reconciliation retain their tested idempotent behavior in the deployed shape.
 - [ ] Storage containers and queues are not anonymously accessible.
 - [ ] A synthetic protected smoke flow saves an Entry, observes Queue processing, and reaches a ready Draft without reading real owner content.
+- [ ] After deployment and before maintenance exit, a protected synthetic smoke flow proves the selected commit-SHA API and worker can resume Queue processing without duplicate or lost obligations.
 - [ ] Platform and application logs expose state, delay, retries, opaque identifiers, provider/model usage, and deployment SHA but no personal content or secret.

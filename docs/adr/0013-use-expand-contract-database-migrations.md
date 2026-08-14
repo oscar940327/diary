@@ -16,6 +16,8 @@ All production schema changes are ordered, versioned SQL migrations committed wi
 
 Migrations use expand-contract sequencing. A first release adds backward-compatible tables, columns, constraints, or indexes and deploys code that tolerates the transition. Required data migration or backfill occurs without removing structures needed by the previous application revision. Obsolete structures may be removed only in a later release after the compatibility window has passed.
 
+[ADR 0016](./0016-use-maintenance-windows-for-schema-changing-releases.md) defines how schema-changing production releases execute. Expand-contract compatibility applies to the stable schema states before and after migration and keeps the immediately previous application version available for rollback. It does not require the previous and new versions to accept concurrent production writes while migration files are executing; those releases quiesce Diary inside a maintenance window.
+
 Normal application rollback changes Container Apps traffic and related workload versions but does not automatically run a down migration or restore the database. Migration failure stops the release before traffic moves to the new revision, using transactional execution where PostgreSQL supports it. Database restore remains a disaster-recovery operation.
 
 ## Consequences
@@ -26,5 +28,6 @@ Normal application rollback changes Container Apps traffic and related workload 
 - Releases with schema changes require a verified pre-migration backup and additional checks.
 - Removing an old column or table normally takes more than one release.
 - Application code may temporarily support both old and new representations.
+- That compatibility supports staged releases and rollback, not concurrent old-version writes during migration execution; ADR 0016 supplies the maintenance boundary.
 - Irreversible data transformations require explicit design, backup, and acceptance beyond the ordinary migration workflow.
 - A rollback can restore application behavior but cannot automatically undo every external side effect produced by the newer version.

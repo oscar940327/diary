@@ -358,16 +358,23 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 
 - Ordinary pushes run checks and build the commit-SHA image but do not deploy production.
 - Production release is a manually started GitHub Actions workflow whose input identifies the immutable version.
+- A release without a database schema migration may use the ordinary blue-green path without a Diary maintenance window.
+- A release containing a database schema migration enters a Diary-only maintenance mode before backup or migration begins. The rest of the personal website remains available.
+- In maintenance mode, every normal-production Diary API read and write returns an explicit temporary-unavailability response and performs no partial mutation. Health endpoints and a release-only route to the zero-traffic candidate may remain reachable for protected synthetic verification without reopening owner traffic or exposing personal content.
+- Maintenance entry first stops admission of new Diary API requests, waits for all in-flight requests to complete, and pauses or drains every write-capable Diary background workload. Migration must not begin until the release has verified that old and new backend versions cannot write concurrently.
 - A release with schema changes creates and verifies a pre-migration logical backup before applying migrations.
-- Migrations use expand-contract sequencing. The first release adds compatible structures and transitional code; destructive removal occurs only in a later release after the previous revision no longer needs the structure.
-- PostgreSQL migrations use transactions where supported. Migration failure stops the release before traffic promotion.
+- Migrations use expand-contract sequencing. The first release adds compatible structures and transitional code; destructive removal occurs only in a later release after the previous revision no longer needs the structure. The migrated schema remains compatible with the immediately previous application release for rollback, but migration execution does not support concurrent writes from that release.
+- After request draining and verified backup, the schema-changing release applies ordered migrations, validates migrated data and invariants, provisions the selected commit-SHA API and worker, verifies protected API and worker behavior with synthetic data, promotes the selected version, performs post-deployment smoke verification, and only then exits maintenance.
+- PostgreSQL migrations use transactions where supported. Any migration, data verification, provisioning, deployment, or smoke failure keeps Diary in maintenance and leaves production Diary traffic closed.
 - FastAPI uses Container Apps multiple-revision mode for blue-green deployment.
-- The new Green revision receives no production traffic until provisioning, startup, readiness, and protected smoke checks pass.
+- The new Green revision receives no normal production traffic until provisioning, startup, readiness, migration, data validation, image-SHA, privacy, and protected smoke checks pass. During a schema-changing release, protected verification occurs while the public Diary surface remains in maintenance.
 - API and AI-processing workloads promoted together use the same commit SHA.
 - Successful promotion routes 100 percent of production traffic to Green while the immediately previous known-good revision remains available at zero traffic.
-- A failed pre-traffic check leaves the current production revision untouched.
+- A failed pre-traffic check in a release without schema changes leaves the current production revision serving traffic. In a schema-changing release, any failed gate keeps maintenance active even if the preceding revision remains technically available.
 - Manual rollback routes traffic to the prior immutable revision and restores the related worker image version without rebuilding.
 - Rollback does not run an automatic down migration and does not restore an old database.
+- After a successful migration, application rollback may use only an immediately previous version verified against the migrated schema while maintenance remains active. Traffic resumes only after rollback smoke checks pass.
+- If transaction rollback cannot recover a failed migration, the operator follows the existing recovery runbook while maintenance remains active. Database restore remains an explicit disaster-recovery action rather than an automatic release step.
 - Bicep `what-if` output is reviewed before infrastructure changes are applied.
 
 ### Cost, observability, and privacy
@@ -387,7 +394,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 
 ### Documentation and handoff
 
-- Operator runbooks cover initial Azure bootstrap, Bicep deployment, OIDC trust, Key Vault secret bootstrap and rotation, production release, rollback, backup, restore, OpenRouter credit and key limits, AI backlog recovery, Supabase pause/resume, log inspection, and cost review.
+- Operator runbooks cover initial Azure bootstrap, Bicep deployment, OIDC trust, Key Vault secret bootstrap and rotation, production release, maintenance entry and exit, request and writer draining, migration, rollback, backup verification, failure recovery, restore, OpenRouter credit and key limits, AI backlog recovery, Supabase pause/resume, log inspection, and cost review.
 - The production handoff checklist records deployed commit SHA, selected regions, quota checks, infrastructure verification, security and privacy checks, product acceptance, recovery exercises, known limitations, and runbook locations.
 - Handoff includes a guided exercise in which the owner starts a release, identifies active and prior revisions, interprets a failed check or sanitized log, verifies backup and budget status, and returns traffic to the prior revision.
 - Portal instructions are explanatory operational guidance; reproducible resource configuration remains in Bicep.
@@ -442,7 +449,8 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 ### Production verification and release gates
 
 - Production smoke checks use a dedicated synthetic canary record and protected owner access. They do not inspect or expose real diary content.
-- Pre-traffic smoke verifies health, authentication enforcement, database connectivity, Queue submission, worker completion, Blob access required by operations, and a minimal synthetic search/citation flow.
+- For schema-changing releases, production verification proves maintenance admission closes all Diary API reads and writes, in-flight requests drain, write-capable background workloads quiesce, the pre-migration backup is verified, migrations run without concurrent old-version writes, and failed gates keep maintenance closed.
+- Pre-traffic smoke verifies health, authentication enforcement, database connectivity, Queue submission, worker completion, Blob access required by operations, and a minimal synthetic search/citation flow. Post-deployment smoke repeats the critical path before maintenance exit.
 - A release cannot receive traffic when migrations fail, readiness fails, the smoke check fails, the image SHA does not match, or required privacy configuration is absent.
 - Before MVP acceptance, the owner performs and records one backup restore into a separate database, one AI budget-block-and-resume exercise, and one blue-green rollback exercise.
 - A log-leak test injects unique synthetic markers into content, prompts, credentials, and provider errors, then confirms those markers are absent from application and platform-queryable logs.
@@ -473,6 +481,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - Embedding the Diary application through an iframe.
 - A custom domain, custom production certificates, or domain migration.
 - A permanently hosted staging environment.
+- Zero-downtime database schema migration or concurrent old/new application writes during migration execution.
 - Azure Container Registry, Terraform, Application Insights, or an alternative cloud platform.
 - Automatic subscription upgrades, automatic OpenRouter top-up, automatic budget-limit changes, or any application-held OpenRouter Management Key.
 

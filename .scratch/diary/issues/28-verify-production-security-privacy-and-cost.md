@@ -7,6 +7,7 @@
 **Status:** ready-for-agent
 
 - [ ] Production rejects unauthenticated, invalid, expired, and non-owner access while allowing the configured owner.
+- [ ] A production-shaped schema-changing release proves maintenance entry closes all Diary API reads and writes, drains in-flight requests, quiesces writers, and prevents concurrent old/new backend writes before migration.
 - [ ] CORS accepts only the exact published personal-site origin and protected API lookup does not disclose foreign resources.
 - [ ] OpenRouter account and request settings confirm disabled private input/output logging, disabled model training use, denied data collection, ZDR eligibility, fixed models, and no cross-model fallback.
 - [ ] Production and evaluation key limits are verified at USD 5 and USD 1 per month respectively, with automatic top-up disabled.
@@ -16,4 +17,5 @@
 - [ ] Azure budget alerts exist at 50, 80, and 100 percent, the student spending limit remains enabled, and no automatic paid upgrade exists.
 - [ ] Supabase quota review thresholds and Free-plan pause/resume behavior are verified and documented.
 - [ ] Protected production canary checks cover database, Queue, worker, Blob, search, citation, deployment SHA, and readiness without inspecting real diary content.
+- [ ] Failure injection at backup verification, migration, data validation, deployment, and smoke gates proves Diary remains in maintenance until transaction rollback or the documented recovery path and subsequent verification complete.
 - [ ] The live synthetic AI evaluation records zero critical errors for the release candidate.

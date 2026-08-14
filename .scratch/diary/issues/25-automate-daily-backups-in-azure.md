@@ -7,6 +7,7 @@
 **Status:** ready-for-agent
 
 - [ ] A scheduled Container Apps Job creates one logical PostgreSQL backup per day using least-privilege secrets.
+- [ ] The backup operation can be invoked by a schema-changing release after request and writer draining, and release migration cannot proceed until that backup's creation and verification succeed.
 - [ ] Backup artifacts are written only to a private Blob container.
 - [ ] Backup name or metadata exposes creation time, source environment, schema version, and verification state without including credentials or personal excerpts.
 - [ ] Lifecycle management retains the latest 30 daily backups and removes older blobs automatically.
@@ -15,4 +16,5 @@
 - [ ] A selected Azure backup restores Entry revisions, Correction precedence, Conversations, citations, owner authorization, and schema version correctly.
 - [ ] The exercise rebuilds embeddings and eligible AI work and proves protected history, search, and Agent behavior afterward.
 - [ ] The completed restore test records the backup identity, destination, verification results, duration, and any known limitation without storing secrets.
+- [ ] Backup or verification failure returns a release-safe failure result that keeps Diary in maintenance and directs the operator to the recovery runbook.
 - [ ] Storage consumption and retention behavior are included in cost review guidance.
