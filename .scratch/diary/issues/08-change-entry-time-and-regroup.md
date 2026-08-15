@@ -4546,3 +4546,140 @@ found in either complete range.
 - Neither repository was pushed. Ticket 08 remains `ready-for-agent`, not
   Passed, pending a different fresh session's independent complete
   fixed-range review. Ticket 09 remains blocked and was not started.
+
+### 2026-08-16 - Fresh independent complete fixed-range review requires changes
+
+#### Verdict and fixed ranges
+
+- Standards verdict: **CHANGES-REQUIRED** with one Medium blocking
+  correctness/contract finding and no new smell finding.
+- Spec verdict: **CHANGES-REQUIRED** with one separate Medium blocking
+  regression finding and no other missing requirement or scope creep.
+- Overall verdict: **REVIEW-FAILED / CHANGES-REQUIRED**. The two independent
+  axes found two unique blockers. Passing exact-SHA Actions and local suites
+  do not override either source finding.
+- Diary fixed range:
+  `ffec27745a5c1ca937ee833e24087c3c5cd0aed7...a21501cbea4c065c08e3e77e987a323426f8f12e`.
+  Both endpoints resolved, merge-base was exactly the requested base, the
+  non-empty range contained two commits and three changed files, and
+  fixed-range `git diff --check` returned `0`.
+- Personal Website fixed range:
+  `973687f903c0d357d655f9e03d256427d238b2c3...e1fe1dfb08e07934eabc7d5977f647a5aa24de29`.
+  Both endpoints resolved, merge-base was exactly the requested base, the
+  non-empty range contained one commit and two changed files, and fixed-range
+  `git diff --check` returned `0`.
+- Both worktrees began clean on `main`; each `HEAD` and `origin/main` exactly
+  matched its requested endpoint. The review inspected every hunk in only
+  these fixed ranges. Existing non-blocking findings were not re-reviewed or
+  changed, and Ticket 09 was not reviewed or started.
+
+#### Standards review - CHANGES-REQUIRED
+
+1. **Medium - blocking - a valid moved Entry beyond the five-page search is
+   permanently unrecoverable.** Personal Website
+   `src/diary/EntryExperience.tsx:65,188-198,241-268,1065-1072` anchors the
+   fresh rebuild at the moved date, requires the changed Entry to be present,
+   but searches at most five 20-Entry pages. A valid move to an early time on
+   a date containing at least 100 later Entries leaves the moved Entry beyond
+   that bound; `rebuildHistoryWindow` throws, usable cursors stay cleared, and
+   every `Refresh History` repeats the identical impossible search. The new
+   rank-beyond-80 regression places only the former Reading Entry beyond that
+   boundary; the moved Entry itself is still within reach.
+
+   This violates the Ticket 08 acceptance contract at lines 18-19 and the
+   governing History rule at `.scratch/diary/spec.md:202`: a successful Entry
+   Time change must visibly target the moved Entry while installing a bounded
+   fresh window with usable cursors. Implement a bounded strategy that
+   guarantees the moved Entry is represented, and add a regression in which
+   the moved Entry itself, not merely the discarded Reading Entry, is beyond
+   the current five-page reach.
+
+No additional documented-standard violation or new Fowler smell was found in
+the exact ranges. Retained non-blocking scope and maintainability findings were
+excluded as requested.
+
+#### Spec review - CHANGES-REQUIRED
+
+1. **Medium - blocking - viewport ownership is not scoped to Entry Time
+   recovery and can cancel ordinary pagination anchoring.** Personal Website
+   `src/diary/EntryExperience.tsx:496-500,742-780,825-840` sends every wheel,
+   touch, scroll-key and scrollbar intent through `claimViewportOwnership()`,
+   which unconditionally clears the same `pendingHistoryAnchor` used by
+   ordinary `loadAdjacentHistory()`. If intent occurs while an ordinary newer
+   or older request is in flight, a prepended page can install without the
+   explicit anchor restoration promised by Ticket 04. The retained ordinary
+   regression at `tests/e2e/continuous-history.spec.ts:211-230` has no delayed
+   request plus intervening intent and does not cover this path.
+
+   This contradicts MVP User Story 21 at `.scratch/diary/spec.md:47`, the
+   explicit History contract at `.scratch/diary/spec.md:200-201`, and Ticket
+   08's confirmed decision at lines 4434-4436 that ordinary newer/older
+   pagination anchoring remains unchanged. Scope viewport-ownership
+   cancellation to Entry Time recovery anchors, or otherwise preserve the
+   ordinary pagination anchor, and add the delayed ordinary-pagination
+   regression.
+
+No other missing or partial Ticket 08 requirement, incorrect behavior, or
+scope creep was found in either exact range. The moved-Entry success message,
+fresh-snapshot cursor behavior, six in-flight recovery ownership paths,
+still-current background install, absence of `around_entry_id`, and Diary
+CI/system-test alignment otherwise match the confirmed Ticket 08 contract.
+
+#### Exact-SHA GitHub Actions
+
+- Diary endpoint `a21501cbea4c065c08e3e77e987a323426f8f12e` has exact-SHA
+  `Backend checks` run
+  [31897350790](https://github.com/oscar940327/diary/actions/runs/31897350790),
+  attempt 1 `completed/success`. Its `test` job `95042590179` and every
+  returned step succeeded. The job log proves the cross-repository checkout
+  requested Personal Website ref
+  `e1fe1dfb08e07934eabc7d5977f647a5aa24de29`, resolved that exact object, and
+  reported `HEAD is now at e1fe1df Fix Ticket 08 moved Entry viewport
+  ownership` before the successful mypy and pytest commands. CI pytest passed
+  `86 passed, 1 warning`.
+- Personal Website endpoint
+  `e1fe1dfb08e07934eabc7d5977f647a5aa24de29` has exact-SHA `Website checks
+  and Pages` run
+  [31897358605](https://github.com/oscar940327/my-personal-website/actions/runs/31897358605),
+  attempt 1 `completed/success`. Both `build` job `95042610495` and `deploy`
+  job `95042766891`, including all returned steps, succeeded. Its log records
+  `42 passed`, 77 transformed build modules, verified Pages output and a
+  successful Pages deployment.
+
+#### Complete local validation
+
+- Personal Website `npm.cmd run typecheck`: exit `0`.
+- Mandatory complete Chromium command
+  `npm.cmd run test:e2e -- --workers=4 --retries=0 --output=<fresh-temp-path>`:
+  exit `0`, exactly `42 passed` using four workers and zero retries in `18.2s`.
+  Three post-run Vite proxy messages reported expected mocked-request
+  `ECONNREFUSED 127.0.0.1:8000` and did not fail the suite. The exact
+  session-created temporary output directory was verified and removed.
+- Personal Website `npm.cmd run build`: exit `0`, 77 modules transformed and
+  the production site built. The 14 existing classic-script informational
+  warnings remain. `npm.cmd run verify:build`: exit `0`, with GitHub Pages
+  output verified.
+- Diary `python -m mypy src tests`: exit `0`, no issues in 21 source files.
+- The first sandboxed `python -m pytest -q --tb=short` could not access the
+  Docker named pipe, so local Supabase setup failed uniformly: `20 passed, 66
+  errors`. Every error was the same fixture `supabase start` failure and no
+  product assertion failed. This run is retained and is not treated as the
+  gate result.
+- The unchanged complete pytest command was rerun with the required local
+  Docker/Supabase access and returned exit `0`: `86 passed, 1 warning in
+  343.56s`. The warning is the existing Starlette/httpx deprecation. A final
+  Supabase status probe reported no `supabase_db_diary` container, confirming
+  fixture teardown.
+
+#### Scope and required next step
+
+- This review changed no product source, migration, test, workflow, Personal
+  Website file, `CONTEXT.md`, or prior finding. Only this Ticket 08 Comments
+  section records the review. No push or PR occurred.
+- Standards has one finding and Spec has one finding. The worst issue in each
+  axis is the Medium blocking defect recorded above; neither axis passes.
+- Ticket 08 remains `ready-for-agent`, not Passed. A separate Ticket 08
+  implementation/TDD session must address both blockers, preserve the exact
+  confirmed moved-Entry and viewport-ownership boundaries, run all gates, and
+  hand off to another fresh independent complete fixed-range review. Ticket 09
+  remains blocked and was not started.
