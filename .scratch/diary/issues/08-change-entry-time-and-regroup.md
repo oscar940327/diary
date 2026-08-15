@@ -16,10 +16,12 @@
 - [x] Changing Entry Time alone does not invalidate or regenerate AI interpretation of unchanged Original Content.
 - [x] System and browser tests cover same-day changes, cross-day moves, timezone boundaries, and unchanged revision count.
 - [ ] After a successful Entry Time change, History visibly positions the moved Entry and a clear success message names its new `Asia/Taipei` date.
-- [ ] Recovery installs a bounded fresh History window with usable older/newer cursors; it neither requires the prior Reading Entry in that window nor downloads every intervening page.
+- [ ] Recovery uses `GET /entries/{entry_id}/history-window` to install a fixed-size bounded fresh History window that guarantees the moved active Entry is present and provides usable older/newer cursors.
 - [ ] Scroll, keyboard scroll, scrollbar use, Calendar switching, Calendar-date selection, and History switching during an in-flight recovery take viewport ownership, so a superseded anchor cannot pull the viewport back.
 - [ ] A still-current recovery generation may install fresh data after viewport ownership changes without repositioning the viewport.
-- [ ] Ticket 04 scroll anchoring remains unchanged for ordinary older/newer incremental pagination, and no `around_entry_id` backend API is added.
+- [ ] Entry Time recovery viewport cancellation is separate from ordinary History pagination anchoring, so Ticket 04 older/newer anchor restoration remains unchanged.
+- [ ] The frontend does not scan a fixed number of ordinary History pages, cap recovery at five pages or 100 Entries, or download complete History to locate the moved Entry.
+- [ ] The Entry-centered interface uses one fresh snapshot, microsecond Entry Time plus Entry UUID stable ordering, FastAPI owner authorization, and PostgreSQL RLS; non-owner, trashed, and nonexistent targets disclose no Entry or surrounding History data.
 
 ## Comments
 
@@ -4683,3 +4685,66 @@ CI/system-test alignment otherwise match the confirmed Ticket 08 contract.
   confirmed moved-Entry and viewport-ownership boundaries, run all gates, and
   hand off to another fresh independent complete fixed-range review. Ticket 09
   remains blocked and was not started.
+
+### 2026-08-16 - Bounded Entry-centered History interface accepted
+
+#### Architecture decision
+
+- Ticket 08 now adds `GET /entries/{entry_id}/history-window`. After a
+  successful owner-initiated Entry Time change, History uses this interface to
+  show and position the moved Entry at its new location.
+- A successful response guarantees that the specified active, non-trashed,
+  owner-owned Entry is included in one fixed-size bounded History window. The
+  result uses one consistent fresh snapshot and provides older and newer
+  cursors from that snapshot for subsequent incremental loading.
+- Ordering is stable by microsecond Entry Time and Entry UUID. The response
+  bound is independent of lifetime History size and cannot grow into a
+  complete-History download.
+- The frontend must not locate the moved Entry by scanning a fixed count of
+  ordinary History pages. A five-page, 100-Entry, or any other finite scan cap
+  that cannot guarantee the target is explicitly unacceptable.
+
+#### Superseded decision
+
+- The 2026-08-15 statement that Entry Time recovery must use only the existing
+  History contracts and add no `around_entry_id` or Entry-centered backend API
+  is **superseded** by this decision and ADR 0017. The historical statement,
+  failed reviews, findings, and finding-fix records remain above as evidence;
+  none is deleted or rewritten.
+- The still-valid part of the earlier decision remains: the rebuilt bounded
+  window does not have to preserve an arbitrarily distant Reading Entry or
+  download all intervening History to place it beside the moved Entry.
+
+#### Authorization, navigation ownership, and scope
+
+- FastAPI authenticates and authorizes the permanent owner, while PostgreSQL
+  RLS independently enforces the same owner boundary. This defense in depth
+  applies to the target lookup and every surrounding Entry returned by the
+  Entry-centered window.
+- A target that belongs to another identity, is trashed, or does not exist
+  returns the same non-disclosing resource result. No target metadata,
+  surrounding Entry, rank, date, cursor, or existence distinction may leak.
+- Entry Time recovery viewport cancellation is separate from ordinary History
+  pagination anchor state. A newer owner action may cancel recovery
+  positioning, but it must not clear or weaken Ticket 04's older/newer
+  pagination anchor restoration.
+- Calendar, direct-search result, and RAG citation navigation may reuse this
+  interface later. Ticket 08 does not implement those integrations, and
+  Ticket 09 Trash or permanent-deletion work has not started.
+
+#### Latest findings and workflow status
+
+- The latest Standards blocker at the preceding review endpoint remains valid
+  historical evidence: a moved Entry beyond the fixed five-page search was
+  not recoverable. The required fix is now the bounded Entry-centered
+  interface, with a regression where the moved Entry itself lies beyond the
+  former 100-Entry reach.
+- The latest Spec blocker also remains valid: recovery viewport ownership was
+  incorrectly allowed to cancel the ordinary pagination anchor. The required
+  fix separates those states and adds a delayed ordinary older/newer
+  pagination regression with intervening owner intent.
+- This is a documentation decision only. Ticket 08 remains
+  `ready-for-agent`, has **not Passed**, and still requires a separate TDD
+  implementation, complete local and exact-SHA CI validation, and another
+  fresh independent complete fixed-range review.
+- Ticket 09 remains blocked by Ticket 08 and has **not started**.

@@ -20,6 +20,10 @@ _Avoid_: Active Entry, selected Entry
 The authority of the latest navigation intent to determine which Entry or History position the owner sees. A newer owner action supersedes an earlier pending system navigation.
 _Avoid_: Scroll lock, permanent anchor
 
+**Entry-centered History Window**:
+A bounded slice of History organized around a specified Entry and guaranteed to include that Entry when it belongs to the owner's normal, non-trashed History.
+_Avoid_: Page scan, full-history reload
+
 **Original Content**:
 The user-authored free-form text belonging to an Entry, represented by immutable Entry Revisions and kept separate from all AI-derived content.
 _Avoid_: AI input, summary

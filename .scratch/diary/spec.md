@@ -198,11 +198,12 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - The primary application surfaces are authentication, continuous history, calendar, direct search, Insight Agent Conversations, Trash, export, and operational Settings.
 - A global capture action is reachable without leaving history or calendar. The composer is modal or drawer-like and preserves the underlying scroll position.
 - History uses bidirectional cursor loading and explicit scroll anchoring. It does not fetch the entire lifetime history in one response.
-- Ticket 04's explicit scroll-anchor guarantee continues to apply to ordinary older/newer incremental pagination. A successful owner-initiated Entry Time change is a distinct navigation event whose target is the moved Entry, not the previously read Entry.
-- After a successful Entry Time change, History uses bounded incremental loading from a fresh snapshot, positions the moved Entry visibly at its new location, and retains usable older and newer cursors from that snapshot.
+- Ticket 04's explicit scroll-anchor guarantee continues to apply to ordinary older/newer incremental pagination. Its pending pagination anchor is separate from Entry Time recovery state and is not cancelled by recovery viewport-ownership handling.
+- A successful owner-initiated Entry Time change is a distinct navigation event whose target is the moved Entry, not the previously read Entry. History requests the moved Entry's Entry-centered History Window directly; the frontend does not scan a fixed number of ordinary History pages to try to locate it.
+- The Entry-centered History Window is a fixed-size bounded result from one fresh snapshot. It guarantees the moved Entry is present and visibly positioned, and provides usable older and newer cursors tied to that snapshot for later incremental loading.
 - The success state clearly names the Entry's resulting `Asia/Taipei` calendar date.
 - Entry Time change recovery does not preserve an arbitrarily distant Reading Entry at the same pixel position and does not require one bounded History window to contain both that Reading Entry and the moved Entry. It must not download all intervening History to find both.
-- While Entry Time change recovery is in flight, a user scroll, keyboard scroll, scrollbar interaction, switch to Calendar, Calendar-date selection, or switch to History takes viewport ownership. A still-current response may install its fresh data and cursors, but it must not reposition the viewport after that ownership has been superseded.
+- While Entry Time change recovery is in flight, a user scroll, keyboard scroll, scrollbar interaction, switch to Calendar, Calendar-date selection, or switch to History takes viewport ownership. That action cancels only recovery positioning. A still-current response may install its fresh data and cursors, but it must not reposition the viewport after that ownership has been superseded and must not clear or weaken an ordinary History pagination anchor.
 - Selecting a calendar day switches to history with that day as the anchor. It does not open a disconnected one-day document.
 - Entry cards always render complete current Original Content. AI-derived content is secondary, compact, collapsible, and state-aware.
 - Desktop and mobile layouts expose the same data and actions; responsive presentation may differ but must not remove core capability.
@@ -243,13 +244,17 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - Entry creation accepts Original Content, optional intentional Entry Time, and a client idempotency key. It returns the saved Entry and current AI state only after the Entry Revision and durable processing record exist.
 - A repeated creation request with the same idempotency key returns the same Entry rather than creating a duplicate.
 - The API attempts Queue publication before reporting full processing scheduling success. A durable unsent work record supports reconciliation if Azure Queue publication fails after the database commit.
-- History retrieval returns date-grouped Entries around an anchor with separate newer and older cursors. Cursor ordering is stable across equal Entry Times by including Entry identity.
+- History retrieval returns date-grouped Entries around an anchor with separate newer and older cursors. Ordering uses microsecond Entry Time followed by Entry UUID so equal Entry Times remain stable.
 - Calendar retrieval returns active Entry presence or counts for a requested owner-timezone month without returning full content.
 - Entry detail returns stable Entry metadata, the current complete Original Content, current/effective AI metadata, processing state, and permitted actions.
 - Revision history returns revision identifiers, sequence, timestamps, and complete content only to the authenticated owner.
 - Original Content edit accepts the expected current revision and complete replacement content, creates a new revision, changes the current pointer, marks prior derived results stale, and schedules new processing.
 - Entry Time change accepts a valid timestamp and returns the Entry's new owner-timezone grouping information.
-- Entry Time change navigation uses the existing Entry Time mutation and History contracts; the MVP does not add a dedicated `around_entry_id` backend API.
+- `GET /entries/{entry_id}/history-window` returns an Entry-centered History Window for the authenticated owner. A successful response guarantees that the specified active, non-trashed, owner-owned Entry is present. [ADR 0017](../../docs/adr/0017-use-a-bounded-entry-centered-history-interface.md) governs this contract and supersedes the earlier no-Entry-centered-API decision.
+- The Entry-centered response uses the same fixed page-size bound as ordinary History, regardless of lifetime History size. It is produced from one fresh snapshot and returns older and newer cursors from that snapshot for incremental loading; it never returns or causes the frontend to download the complete History.
+- Entry-centered ordering uses microsecond Entry Time and Entry UUID as the stable tie-break tuple. The target Entry and every surrounding Entry in the window are resolved consistently within the fresh snapshot.
+- FastAPI owner authorization and PostgreSQL RLS independently enforce access to the Entry-centered interface. A non-owner, trashed, or nonexistent target produces the same non-disclosing resource result and returns no target or surrounding History data.
+- Calendar navigation, direct-search result navigation, and RAG citation navigation may reuse the Entry-centered interface in their own future tickets. Ticket 08 implements only Entry Time recovery and does not begin those later features.
 - Revision restoration accepts a historical revision identifier and expected current revision and creates a new current revision.
 - Move-to-Trash, restore, and permanent-delete operations are distinct contracts. Permanent delete requires an explicit confirmation value and is never the default delete behavior.
 - Blank or whitespace-only Original Content is a validation error.
@@ -418,7 +423,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 ### Critical system scenarios
 
 - Capture tests cover multiple Entries on one date, backdated Entries, blank rejection, UTC storage, Asia/Taipei grouping, and idempotent repeated create requests.
-- History tests cover stable reverse-chronological pagination, loading in both directions around a selected date, calendar navigation, and Entries moved across date boundaries. Entry Time change coverage proves that a formerly visible Reading Entry beyond the prior rank-80 recovery boundary does not trigger an unbounded search, the moved Entry is shown from a fresh bounded window, and its older/newer cursors remain usable.
+- History tests cover stable reverse-chronological pagination, loading in both directions around a selected date, calendar navigation, and Entries moved across date boundaries. Entry Time recovery coverage places the moved Entry beyond any former five-page or 100-Entry scan reach, proves one bounded Entry-centered response still contains it from a fresh snapshot, and proves both returned cursors remain usable without duplicate Entries or a full-History download. Equal-time coverage proves microsecond Entry Time and Entry UUID ordering; protected-interface coverage proves identical non-disclosure for non-owner, trashed, and nonexistent targets while exercising both FastAPI authorization and PostgreSQL RLS.
 - Revision tests cover concurrent stale edits, immutable revision history, restoring an older revision as a new current revision, time-only edits, and regeneration without overwriting a Correction.
 - Deletion tests cover trash visibility, exclusion from direct search and Agent retrieval, restore, permanent cascade deletion, and unavailable historical citations without disclosure of deleted source content.
 - Queue tests cover enqueue-after-commit recovery, duplicate delivery, worker restart, processing lease recovery, one automatic retry, manual retry, and the transition to `blocked_budget`.
@@ -433,7 +438,8 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - A deliberately small browser suite covers only the highest-risk owner journeys rather than duplicating every backend combination.
 - Desktop and mobile-sized runs cover Magic Link/OTP completion, capture from the continuous history, calendar-to-history navigation, editing Original Content, correcting an AI Draft, direct search, asking the Insight Agent, opening a citation, trash and restore, and the budget-blocked recovery affordance.
 - Browser assertions include keyboard focus, preserved scroll position after capture, complete Original Content visibility, readable citation/source presentation, and critical controls at a narrow mobile viewport.
-- Browser coverage delays Entry Time recovery responses and verifies that scroll, keyboard scroll, scrollbar use, Calendar switching, Calendar-date selection, and returning to History take viewport ownership. A response from the still-current History request generation may install fresh data, but neither it nor delayed layout/font restoration may pull the viewport back to the superseded anchor.
+- Browser coverage delays Entry Time recovery responses and verifies that scroll, keyboard scroll, scrollbar use, Calendar switching, Calendar-date selection, and returning to History take viewport ownership. A response from the still-current History request generation may install fresh data, but neither it nor delayed layout/font restoration may pull the viewport back to the superseded recovery target.
+- A separate delayed ordinary older/newer pagination regression introduces intervening scroll, keyboard, or scrollbar intent and proves Ticket 04's pagination anchor restoration still occurs. Recovery cancellation state must not clear the ordinary pagination anchor.
 - The personal website test confirms the `DIARY` navigation item appears below JOURNEY and above MktAgent and opens the direct Diary page without an iframe.
 
 ### Deterministic algorithm tests
@@ -489,7 +495,8 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - A custom domain, custom production certificates, or domain migration.
 - A permanently hosted staging environment.
 - Zero-downtime database schema migration or concurrent old/new application writes during migration execution.
-- A dedicated `around_entry_id` History backend API, or an Entry Time change recovery that downloads every intervening History page to co-locate arbitrarily distant moved and Reading Entries.
+- Calendar, direct-search result, or RAG citation integration with the Entry-centered History interface during Ticket 08. Those later navigation flows remain in their own tickets.
+- Entry Time recovery that scans a fixed maximum number of History pages, downloads the complete History, or downloads every intervening page to co-locate arbitrarily distant moved and Reading Entries.
 - Azure Container Registry, Terraform, Application Insights, or an alternative cloud platform.
 - Automatic subscription upgrades, automatic OpenRouter top-up, automatic budget-limit changes, or any application-held OpenRouter Management Key.
 
