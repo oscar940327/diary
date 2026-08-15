@@ -44,7 +44,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 18. As the owner, I want to scroll downward from today into older dates, so that I can review the past continuously.
 19. As the owner, I want to scroll upward from a past date into newer dates, so that calendar jumps do not trap me in one direction.
 20. As the owner, I want adjacent dates loaded incrementally, so that a long history does not require downloading every Entry at once.
-21. As the owner, I want newly loaded date groups to preserve my visual scroll anchor, so that bidirectional loading does not make the page jump.
+21. As the owner, I want date groups added by ordinary older/newer pagination to preserve my visual scroll anchor, so that bidirectional incremental loading does not make the page jump.
 22. As the owner, I want a calendar showing which dates have Entries, so that I can navigate history spatially.
 23. As the owner, I want to choose a calendar date and enter the continuous history at that date, so that calendar and history are two views of the same records.
 24. As the owner, I want scrolling to continue across adjacent dates after a calendar jump, so that the selected date is an anchor rather than a separate page.
@@ -58,7 +58,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 32. As the owner, I want to restore a prior revision by creating a new current revision, so that restoration does not rewrite history.
 33. As the owner using two devices, I want a conflicting stale edit rejected clearly, so that one device cannot silently overwrite a newer revision.
 34. As the owner, I want to change Entry Time without creating an Original Content revision, so that metadata changes are not confused with text changes.
-35. As the owner, I want changing Entry Time to move the Entry to the correct date group, so that calendar navigation stays accurate.
+35. As the owner, I want changing Entry Time to show the moved Entry at its new position and confirm its new `Asia/Taipei` date, so that I can verify the change without searching for it.
 36. As the owner, I want to move an Entry to Trash, so that accidental or unwanted records disappear without immediate destruction.
 37. As the owner, I want trashed Entries excluded from history, calendar, search, RAG, AI processing, and analysis, so that deleted material does not influence normal use.
 38. As the owner, I want to browse Trash separately, so that I can review removed Entries.
@@ -198,6 +198,11 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - The primary application surfaces are authentication, continuous history, calendar, direct search, Insight Agent Conversations, Trash, export, and operational Settings.
 - A global capture action is reachable without leaving history or calendar. The composer is modal or drawer-like and preserves the underlying scroll position.
 - History uses bidirectional cursor loading and explicit scroll anchoring. It does not fetch the entire lifetime history in one response.
+- Ticket 04's explicit scroll-anchor guarantee continues to apply to ordinary older/newer incremental pagination. A successful owner-initiated Entry Time change is a distinct navigation event whose target is the moved Entry, not the previously read Entry.
+- After a successful Entry Time change, History uses bounded incremental loading from a fresh snapshot, positions the moved Entry visibly at its new location, and retains usable older and newer cursors from that snapshot.
+- The success state clearly names the Entry's resulting `Asia/Taipei` calendar date.
+- Entry Time change recovery does not preserve an arbitrarily distant Reading Entry at the same pixel position and does not require one bounded History window to contain both that Reading Entry and the moved Entry. It must not download all intervening History to find both.
+- While Entry Time change recovery is in flight, a user scroll, keyboard scroll, scrollbar interaction, switch to Calendar, Calendar-date selection, or switch to History takes viewport ownership. A still-current response may install its fresh data and cursors, but it must not reposition the viewport after that ownership has been superseded.
 - Selecting a calendar day switches to history with that day as the anchor. It does not open a disconnected one-day document.
 - Entry cards always render complete current Original Content. AI-derived content is secondary, compact, collapsible, and state-aware.
 - Desktop and mobile layouts expose the same data and actions; responsive presentation may differ but must not remove core capability.
@@ -244,6 +249,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - Revision history returns revision identifiers, sequence, timestamps, and complete content only to the authenticated owner.
 - Original Content edit accepts the expected current revision and complete replacement content, creates a new revision, changes the current pointer, marks prior derived results stale, and schedules new processing.
 - Entry Time change accepts a valid timestamp and returns the Entry's new owner-timezone grouping information.
+- Entry Time change navigation uses the existing Entry Time mutation and History contracts; the MVP does not add a dedicated `around_entry_id` backend API.
 - Revision restoration accepts a historical revision identifier and expected current revision and creates a new current revision.
 - Move-to-Trash, restore, and permanent-delete operations are distinct contracts. Permanent delete requires an explicit confirmation value and is never the default delete behavior.
 - Blank or whitespace-only Original Content is a validation error.
@@ -412,7 +418,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 ### Critical system scenarios
 
 - Capture tests cover multiple Entries on one date, backdated Entries, blank rejection, UTC storage, Asia/Taipei grouping, and idempotent repeated create requests.
-- History tests cover stable reverse-chronological pagination, loading in both directions around a selected date, calendar navigation, and Entries moved across date boundaries.
+- History tests cover stable reverse-chronological pagination, loading in both directions around a selected date, calendar navigation, and Entries moved across date boundaries. Entry Time change coverage proves that a formerly visible Reading Entry beyond the prior rank-80 recovery boundary does not trigger an unbounded search, the moved Entry is shown from a fresh bounded window, and its older/newer cursors remain usable.
 - Revision tests cover concurrent stale edits, immutable revision history, restoring an older revision as a new current revision, time-only edits, and regeneration without overwriting a Correction.
 - Deletion tests cover trash visibility, exclusion from direct search and Agent retrieval, restore, permanent cascade deletion, and unavailable historical citations without disclosure of deleted source content.
 - Queue tests cover enqueue-after-commit recovery, duplicate delivery, worker restart, processing lease recovery, one automatic retry, manual retry, and the transition to `blocked_budget`.
@@ -427,6 +433,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - A deliberately small browser suite covers only the highest-risk owner journeys rather than duplicating every backend combination.
 - Desktop and mobile-sized runs cover Magic Link/OTP completion, capture from the continuous history, calendar-to-history navigation, editing Original Content, correcting an AI Draft, direct search, asking the Insight Agent, opening a citation, trash and restore, and the budget-blocked recovery affordance.
 - Browser assertions include keyboard focus, preserved scroll position after capture, complete Original Content visibility, readable citation/source presentation, and critical controls at a narrow mobile viewport.
+- Browser coverage delays Entry Time recovery responses and verifies that scroll, keyboard scroll, scrollbar use, Calendar switching, Calendar-date selection, and returning to History take viewport ownership. A response from the still-current History request generation may install fresh data, but neither it nor delayed layout/font restoration may pull the viewport back to the superseded anchor.
 - The personal website test confirms the `DIARY` navigation item appears below JOURNEY and above MktAgent and opens the direct Diary page without an iframe.
 
 ### Deterministic algorithm tests
@@ -482,6 +489,7 @@ Production uses Supabase PostgreSQL, Azure Container Apps Consumption, Azure Sto
 - A custom domain, custom production certificates, or domain migration.
 - A permanently hosted staging environment.
 - Zero-downtime database schema migration or concurrent old/new application writes during migration execution.
+- A dedicated `around_entry_id` History backend API, or an Entry Time change recovery that downloads every intervening History page to co-locate arbitrarily distant moved and Reading Entries.
 - Azure Container Registry, Terraform, Application Insights, or an alternative cloud platform.
 - Automatic subscription upgrades, automatic OpenRouter top-up, automatic budget-limit changes, or any application-held OpenRouter Management Key.
 

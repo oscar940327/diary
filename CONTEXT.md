@@ -12,6 +12,14 @@ _Avoid_: Daily note, diary page
 The user-selected date and time under which an Entry appears in the calendar and continuous history. It defaults to the current time but may be changed for a late or backdated Entry.
 _Avoid_: Creation time
 
+**Reading Entry**:
+The Entry serving as the owner's current visual reference while reading History. It can be different from an Entry whose Entry Time the owner changes.
+_Avoid_: Active Entry, selected Entry
+
+**Viewport Ownership**:
+The authority of the latest navigation intent to determine which Entry or History position the owner sees. A newer owner action supersedes an earlier pending system navigation.
+_Avoid_: Scroll lock, permanent anchor
+
 **Original Content**:
 The user-authored free-form text belonging to an Entry, represented by immutable Entry Revisions and kept separate from all AI-derived content.
 _Avoid_: AI input, summary
@@ -222,6 +230,10 @@ Items in this section are directions, not commitments to the first MVP.
 - The continuous history is reverse chronological: newer dates are above older dates.
 - The default position is today. Scrolling downward reveals older dates, while scrolling upward from a past date reveals newer dates.
 - The client incrementally loads adjacent date groups near either scroll boundary instead of downloading the full history at once.
+- Ordinary older/newer incremental pagination preserves the Reading Entry's visual anchor.
+- A successful owner-initiated Entry Time change instead makes the moved Entry the History navigation target and clearly reports its new `Asia/Taipei` date.
+- The Reading Entry need not remain at the same pixel position or share one bounded History window with an arbitrarily distant moved Entry.
+- If the owner scrolls or navigates between History and Calendar while the moved-Entry navigation is pending, that newer action takes Viewport Ownership and the pending navigation must not pull the viewport back.
 - Every loaded Entry displays its complete Original Content.
 - A global new-Entry action is available from both the continuous history and calendar.
 - The new-Entry composer opens without leaving the current browsing position, accepts free text, and defaults `entry_at` to the current `Asia/Taipei` time.
@@ -342,18 +354,14 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 08 remains `ready-for-agent` and is the only next step. Its fresh
-complete fixed-range review at Diary
-`7cd5db5650ac55f88f583069b268bde17c2d32f5` and Personal Website
-`973687f903c0d357d655f9e03d256427d238b2c3` is **CHANGES-REQUIRED** even though
-the exact-SHA Actions and authoritative clean local suites passed. The blocking
-gates are: (1) remove the fixed five-request recovery limit that permanently
-fails when the independent reading Entry lies beyond rank 80 after the moved
-Entry consumes another direction, and (2) preserve user scroll and
-Calendar/History navigation intent that occurs while fresh recovery is still
-in flight so a later anchor restorer cannot overwrite that newer intent.
-ADR 0016's drained Maintenance Window remains effective; fixes must not
-reintroduce zero-downtime migration or migration-time old/new concurrent-write
-requirements. A separate Ticket 08 TDD fix session, exact-SHA CI, and another
-fresh independent complete review are required. Ticket 09 has not started and
-cannot start until Ticket 08 passes all gates.
+Ticket 08 remains `ready-for-agent` and is the only next step. Its latest fresh
+complete fixed-range review remains **CHANGES-REQUIRED**. The preserved
+beyond-rank-80 finding assumed the now-superseded requirement that recovery
+must simultaneously locate the moved Entry and preserve an arbitrarily distant
+Reading Entry. The confirmed MVP instead targets the moved Entry with bounded
+fresh History data and does not require both Entries in one window. Ticket 08
+still requires TDD implementation of that behavior and of Viewport Ownership
+across in-flight recovery, followed by exact-SHA CI and another fresh
+independent complete review. ADR 0016's drained Maintenance Window remains
+effective; Ticket 09 has not started and cannot start until Ticket 08 passes
+all gates.

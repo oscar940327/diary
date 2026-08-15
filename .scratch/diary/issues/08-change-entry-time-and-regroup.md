@@ -15,6 +15,11 @@
 - [x] Invalid timestamps are rejected without partial changes.
 - [x] Changing Entry Time alone does not invalidate or regenerate AI interpretation of unchanged Original Content.
 - [x] System and browser tests cover same-day changes, cross-day moves, timezone boundaries, and unchanged revision count.
+- [ ] After a successful Entry Time change, History visibly positions the moved Entry and a clear success message names its new `Asia/Taipei` date.
+- [ ] Recovery installs a bounded fresh History window with usable older/newer cursors; it neither requires the prior Reading Entry in that window nor downloads every intervening page.
+- [ ] Scroll, keyboard scroll, scrollbar use, Calendar switching, Calendar-date selection, and History switching during an in-flight recovery take viewport ownership, so a superseded anchor cannot pull the viewport back.
+- [ ] A still-current recovery generation may install fresh data after viewport ownership changes without repositioning the viewport.
+- [ ] Ticket 04 scroll anchoring remains unchanged for ordinary older/newer incremental pagination, and no `around_entry_id` backend API is added.
 
 ## Comments
 
@@ -4402,3 +4407,53 @@ found in either complete range.
 - After fixes and exact-SHA CI, another fresh independent complete fixed-range
   review is required. Ticket 09 cannot start until both review axes, complete
   local suites, and exact-SHA Actions all pass in that future review.
+
+### 2026-08-15 - Confirmed Entry Time navigation and viewport-ownership decision
+
+#### Confirmed product behavior
+
+- After a successful owner-initiated Entry Time change, the moved Entry owns
+  the initial navigation result: History must visibly position that Entry at
+  its new location and show a clear success message naming its new
+  `Asia/Taipei` calendar date.
+- The MVP does not also preserve an arbitrarily distant Reading Entry at the
+  same pixel position. One bounded History window is not required to contain
+  both the moved Entry and that prior Reading Entry, and recovery must not
+  download every intervening History page in an attempt to find both.
+- Entry Time change recovery continues to use bounded incremental loading, one
+  fresh snapshot, and usable older/newer cursors. It uses the existing Entry
+  Time mutation and History contracts; no `around_entry_id` backend API is
+  added.
+- If the owner scrolls, uses a keyboard scroll command, uses the scrollbar,
+  switches to Calendar, selects another Calendar date, or switches to History
+  before recovery completes, that latest action takes viewport ownership.
+- A recovery response whose History request generation is still current may
+  install its fresh data and cursors after viewport ownership has changed, but
+  neither that response nor delayed anchor/layout/font work may pull the
+  viewport back to the superseded anchor.
+- Ticket 04's scroll-anchor guarantee is unchanged for ordinary older/newer
+  incremental pagination. This decision defines only the distinct behavior
+  after an owner-initiated Entry Time change.
+- ADR 0016 and the drained Maintenance Window decision remain unchanged.
+
+#### Latest review finding disposition
+
+- The latest beyond-rank-80 High finding is retained above as historical review
+  evidence; it is not deleted and did occur against the reviewed endpoint.
+- That finding required recovery to span both the moved Entry and an
+  independently positioned, arbitrarily distant Reading Entry. This requirement
+  has now been superseded by the confirmed moved-Entry navigation behavior, so
+  increasing the fixed request count or adding an Entry-centered backend API
+  is not the required correction.
+- The in-flight viewport-ownership finding remains directly applicable and
+  must be fixed under the confirmed behavior.
+
+#### Documentation and workflow disposition
+
+- No ADR is added. This is a reversible MVP interaction rule documented by the
+  product specification and Ticket 08; it does not meet the project's
+  hard-to-reverse threshold for an architecture record.
+- Ticket 08 remains `ready-for-agent`, not Passed. It still requires a separate
+  implementation/TDD session, complete local and exact-SHA CI validation, and
+  a fresh independent complete fixed-range review.
+- Ticket 09 remains blocked and has not started.
