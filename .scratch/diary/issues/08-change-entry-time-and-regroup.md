@@ -4457,3 +4457,92 @@ found in either complete range.
   implementation/TDD session, complete local and exact-SHA CI validation, and
   a fresh independent complete fixed-range review.
 - Ticket 09 remains blocked and has not started.
+
+### 2026-08-16 - Moved-Entry navigation and Viewport Ownership implemented
+
+#### TDD Red evidence
+
+- The new rank-beyond-80 Chromium regression first loaded 100 Entries so the
+  Reading Entry was beyond the former rank-80 boundary. After the committed
+  Entry Time mutation, the old implementation exhausted its five-request
+  mandatory-Reading-Entry search and incorrectly left `Refresh History`
+  visible instead of installing a moved-Entry window.
+- With the fresh History response deliberately held in flight, the original
+  wheel, keyboard and scrollbar cases were pulled away from the latest user
+  position by 420, 415 and 96 pixels respectively. Calendar-date and
+  Calendar-to-History actions were also blocked by the still-open Entry Time
+  dialog while recovery was pending.
+- The first complete Diary run after the frontend behavior changed preserved
+  the old Reading-window assertions and therefore reported `84 passed, 2
+  failed`: both failures expected a 40- or 60-Entry rebuilt Reading window
+  instead of the confirmed 20-Entry moved-centered window.
+
+#### Green behavior
+
+- A committed mutation now closes the editor, reports `Entry Time changed to
+  YYYY-MM-DD (Asia/Taipei).`, starts a bounded 20-Entry fresh-snapshot rebuild
+  around the moved Entry's new date, and positions that moved Entry visibly.
+  The prior Reading Entry is not a mandatory member of the rebuilt window.
+- History request generation and viewport ownership are separate counters.
+  A still-current response installs fresh Entries and cursors after wheel,
+  touch/scroll, keyboard, scrollbar, Calendar or History ownership changes,
+  but it queues no superseded anchor. Pending layout work additionally checks
+  viewport ownership before immediate restoration, animation frames,
+  `ResizeObserver` callbacks and `document.fonts.ready` callbacks.
+- Calendar-date selection continues to retire the old request generation and
+  start its own History request. Calendar and Calendar-to-History switching
+  supersede only viewport ownership, allowing the valid recovery response to
+  install in the background without repositioning.
+- The rank-beyond-80 save and failed-save recovery paths both use no more than
+  five requests, show the moved Entry, omit the arbitrarily distant Reading
+  Entry, and continue newer and older pagination with the fresh snapshot.
+- Focused frontend Green: the seven new moved-entry/ownership cases passed;
+  the complete `continuous-history.spec.ts` passed `23 passed`. The unchanged
+  Ticket 04 ordinary older/newer pagination test independently preserved its
+  Reading Entry pixel anchor.
+- Focused real-system Green: both changed browser/system cases passed against
+  real Supabase/PostgreSQL/PostgREST/Uvicorn and proved bounded moved-entry
+  recovery, the Taipei confirmation, fresh newer/older cursor requests and no
+  duplicate rendered Entry IDs.
+
+#### Complete validation
+
+- Personal Website `npm.cmd run typecheck`: exit `0`.
+- Personal Website mandatory Chromium command
+  `npm.cmd run test:e2e -- --workers=4 --retries=0
+  --output=<fresh-ticket08-path>`: exit `0`, exactly `42 passed` with four
+  workers and zero retries in `17.2s`. Two post-run Vite proxy messages for
+  mocked `/entries/history` requests reported expected
+  `ECONNREFUSED 127.0.0.1:8000` and did not fail the suite.
+- An earlier complete four-worker run reported `41 passed, 1 failed` because
+  Chromium PageDown animation advanced another 10 pixels after the test had
+  sampled ownership. The assertion was not relaxed: the test now waits for
+  keyboard scrolling to settle, passed five repeated four-worker runs, and
+  the unchanged complete command then passed all 42 tests.
+- Personal Website `npm.cmd run build`: exit `0`, 77 modules transformed and
+  production output built. The 14 existing classic-script informational
+  warnings remain. `npm.cmd run verify:build`: exit `0` and verified the
+  GitHub Pages output.
+- Diary `python -m mypy src tests`: exit `0`, no issues in 21 source files.
+- The final clean-lifecycle Diary command
+  `python -m pytest -q --tb=short`: exit `0`, `86 passed, 1 warning in
+  350.84s`. The warning is the existing Starlette/httpx deprecation. A final
+  Supabase status check found no `supabase_db_diary` container, confirming
+  fixture teardown.
+
+#### Scope audit, commits and handoff
+
+- Personal Website changed only `src/diary/EntryExperience.tsx` and
+  `tests/e2e/continuous-history.spec.ts`. Diary changed only the two relevant
+  real-browser system assertions and the exact reviewed-frontend CI pin.
+  Both `git diff --check` audits passed before commit.
+- Added-line scans found no `around_entry_id` API, Ticket 09/Trash/permanent
+  deletion work, Note Garden or `index.html` change, secret, or work on the
+  retained non-blocking findings.
+- Personal Website implementation commit:
+  `e1fe1dfb08e07934eabc7d5977f647a5aa24de29`.
+- Diary real-system coverage and exact frontend-pin commit:
+  `0cf0034fb488cb30d20312554f025c1b4d105d7f`.
+- Neither repository was pushed. Ticket 08 remains `ready-for-agent`, not
+  Passed, pending a different fresh session's independent complete
+  fixed-range review. Ticket 09 remains blocked and was not started.
