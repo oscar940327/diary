@@ -1,6 +1,7 @@
 from collections.abc import Iterable
 import subprocess
 from typing import Protocol, cast
+from uuid import uuid4
 
 import httpx
 
@@ -11,6 +12,7 @@ OWNER_ID = "61c2f4ca-2fab-4b50-a0cf-12aac0ec0b24"
 class SupabaseSettings(Protocol):
     api_url: str
     publishable_key: str
+    service_role_key: str
 
 
 class PendingCapture:
@@ -194,6 +196,14 @@ def _page_contents(page: dict[str, object]) -> list[object]:
         entry["original_content"]
         for entry in _page_entries(page)
     ]
+
+
+def _service_headers(settings: SupabaseSettings) -> dict[str, str]:
+    return {
+        "apikey": settings.service_role_key,
+        "Authorization": f"Bearer {settings.service_role_key}",
+        "Content-Type": "application/json",
+    }
 
 
 def test_owner_loads_older_and_newer_history_from_a_past_anchor(
@@ -699,3 +709,327 @@ def test_history_groups_complete_content_at_taipei_date_boundaries(
     )
     assert non_owner_rls_response.status_code == 200
     assert non_owner_rls_response.json() == []
+
+
+def test_entry_centered_window_finds_target_beyond_one_hundred_entries_and_continues_both_directions(
+    diary_api: str,
+    owner_access_token: str,
+) -> None:
+    target = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                "history-window-deep-target",
+                "Moved target beyond the former one-hundred Entry reach.",
+                "2088-05-01T08:00:00+08:00",
+            ),
+        ),
+    )[0]
+    later_entries = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                f"history-window-later-{index:03d}",
+                f"Later destination Entry {index:03d}.",
+                (
+                    "2088-06-15T"
+                    f"{12 + index // 60:02d}:{index % 60:02d}:00+08:00"
+                ),
+            )
+            for index in range(120)
+        ),
+    )
+    older_entries = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                f"history-window-older-{index:03d}",
+                f"Older destination Entry {index:03d}.",
+                f"2088-06-14T12:{index:02d}:00+08:00",
+            )
+            for index in range(40)
+        ),
+    )
+
+    moved_response = httpx.put(
+        f"{diary_api}/entries/{target['id']}/entry-time",
+        headers=_owner_headers(owner_access_token),
+        json={"entry_at": "2088-06-15T08:00:00+08:00"},
+    )
+    assert moved_response.status_code == 200, moved_response.text
+    moved_target = moved_response.json()
+
+    expected_entries = sorted(
+        [*later_entries, moved_target, *older_entries],
+        key=lambda entry: (str(entry["entry_at"]), str(entry["id"])),
+        reverse=True,
+    )
+    expected_ids = [str(entry["id"]) for entry in expected_entries]
+    assert expected_ids.index(str(target["id"])) == 120
+
+    centered_response = httpx.get(
+        f"{diary_api}/entries/{target['id']}/history-window",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert centered_response.status_code == 200, centered_response.text
+    centered = centered_response.json()
+    centered_entries = _page_entries(centered)
+    centered_ids = [str(entry["id"]) for entry in centered_entries]
+    assert len(centered_ids) == 20
+    assert str(target["id"]) in centered_ids
+    assert centered["older_cursor"] is not None
+    assert centered["newer_cursor"] is not None
+
+    added_after_snapshot = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                "history-window-after-snapshot",
+                "This Entry must not enter either continuation cursor.",
+                "2088-06-15T15:00:00.500000+08:00",
+            ),
+        ),
+    )[0]
+    older_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={
+            "direction": "older",
+            "cursor": centered["older_cursor"],
+            "limit": 20,
+        },
+    )
+    newer_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={
+            "direction": "newer",
+            "cursor": centered["newer_cursor"],
+            "limit": 20,
+        },
+    )
+    assert older_response.status_code == 200, older_response.text
+    assert newer_response.status_code == 200, newer_response.text
+
+    fixture_ids = set(expected_ids)
+    older_page_ids = [
+        str(entry["id"])
+        for entry in _page_entries(older_response.json())
+    ]
+    newer_page_ids = [
+        str(entry["id"])
+        for entry in _page_entries(newer_response.json())
+    ]
+    older_ids = [
+        str(entry["id"])
+        for entry in _page_entries(older_response.json())
+        if str(entry["id"]) in fixture_ids
+    ]
+    newer_ids = [
+        str(entry["id"])
+        for entry in _page_entries(newer_response.json())
+        if str(entry["id"]) in fixture_ids
+    ]
+    centered_start = expected_ids.index(centered_ids[0])
+    centered_end = centered_start + len(centered_ids)
+    assert centered_ids == expected_ids[centered_start:centered_end]
+    assert older_ids == expected_ids[centered_end:centered_end + 20]
+    assert newer_ids == expected_ids[max(0, centered_start - 20):centered_start]
+    traversed_ids = [*newer_ids, *centered_ids, *older_ids]
+    assert len(traversed_ids) == len(set(traversed_ids))
+    assert str(added_after_snapshot["id"]) not in {
+        *older_page_ids,
+        *newer_page_ids,
+    }
+
+
+def test_entry_centered_window_uses_microseconds_and_uuid_tie_breaking(
+    diary_api: str,
+    owner_access_token: str,
+) -> None:
+    tied_entries = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                f"history-window-tie-{index:02d}",
+                f"Equal microsecond Entry {index:02d}.",
+                "2088-07-01T09:30:00.123456+08:00",
+            )
+            for index in range(25)
+        ),
+    )
+    expected_ids = sorted(
+        (str(entry["id"]) for entry in tied_entries),
+        reverse=True,
+    )
+    target_id = expected_ids[12]
+
+    response = httpx.get(
+        f"{diary_api}/entries/{target_id}/history-window",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert response.status_code == 200, response.text
+    returned_ids = [
+        str(entry["id"])
+        for entry in _page_entries(response.json())
+        if str(entry["id"]) in set(expected_ids)
+    ]
+    assert target_id in returned_ids
+    assert returned_ids == sorted(returned_ids, reverse=True)
+    first_index = expected_ids.index(returned_ids[0])
+    assert returned_ids == expected_ids[
+        first_index:first_index + len(returned_ids)
+    ]
+
+
+def test_entry_centered_window_fills_fixed_bound_near_history_edge(
+    diary_api: str,
+    owner_access_token: str,
+) -> None:
+    entries = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                f"history-window-edge-{index:02d}",
+                f"Edge allocation Entry {index:02d}.",
+                f"2088-07-02T{index:02d}:00:00+08:00",
+            )
+            for index in range(20)
+        ),
+    )
+    newest = entries[-1]
+
+    response = httpx.get(
+        f"{diary_api}/entries/{newest['id']}/history-window",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert response.status_code == 200, response.text
+    page_entries = _page_entries(response.json())
+    returned_ids = [
+        str(entry["id"])
+        for entry in page_entries
+    ]
+    assert len(page_entries) == 20
+    assert str(newest["id"]) in returned_ids
+
+
+def test_entry_centered_window_is_non_disclosing_and_rls_enforced(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+    non_owner_access_token: str,
+) -> None:
+    active, trashed, foreign = _capture_entries(
+        diary_api,
+        owner_access_token,
+        (
+            (
+                "history-window-active-control",
+                "Active owner surrounding data must never leak on denial.",
+                "2088-08-03T12:00:00+08:00",
+            ),
+            (
+                "history-window-trashed-target",
+                "Trashed target must be indistinguishable from missing.",
+                "2088-08-02T12:00:00+08:00",
+            ),
+            (
+                "history-window-foreign-target",
+                "Another owner's target must be indistinguishable from missing.",
+                "2088-08-01T12:00:00+08:00",
+            ),
+        ),
+    )
+    service_headers = _service_headers(local_supabase)
+    trash_response = httpx.patch(
+        (
+            f"{local_supabase.api_url}/rest/v1/entries"
+            f"?id=eq.{trashed['id']}"
+        ),
+        headers=service_headers,
+        json={"trashed_at": "2088-08-04T00:00:00+00:00"},
+    )
+    foreign_response = httpx.patch(
+        (
+            f"{local_supabase.api_url}/rest/v1/entries"
+            f"?id=eq.{foreign['id']}"
+        ),
+        headers=service_headers,
+        json={"owner_id": "0c97345c-50ac-4fcb-9664-bf796b854a92"},
+    )
+    assert trash_response.status_code == 204, trash_response.text
+    assert foreign_response.status_code == 204, foreign_response.text
+
+    missing_id = str(uuid4())
+    denied_responses = [
+        httpx.get(
+            f"{diary_api}/entries/{entry_id}/history-window",
+            headers=_owner_headers(owner_access_token),
+        )
+        for entry_id in (foreign["id"], trashed["id"], missing_id)
+    ]
+    assert {
+        (response.status_code, response.text)
+        for response in denied_responses
+    } == {(404, '{"detail":"Entry not found"}')}
+
+    non_owner_api_response = httpx.get(
+        f"{diary_api}/entries/{active['id']}/history-window",
+        headers=_owner_headers(non_owner_access_token),
+    )
+    assert non_owner_api_response.status_code == 401
+    assert non_owner_api_response.json() == {
+        "detail": "Authentication required"
+    }
+    direct_non_owner_response = httpx.post(
+        (
+            f"{local_supabase.api_url}/rest/v1/rpc/"
+            "get_diary_entry_history_window_v1"
+        ),
+        headers=_postgrest_headers(
+            local_supabase,
+            non_owner_access_token,
+        ),
+        json={
+            "p_entry_id": active["id"],
+        },
+    )
+    assert direct_non_owner_response.status_code == 200
+    assert direct_non_owner_response.json() == []
+
+    rls_catalog = subprocess.run(
+        [
+            "docker",
+            "exec",
+            "supabase_db_diary",
+            "psql",
+            "--username",
+            "postgres",
+            "--dbname",
+            "postgres",
+            "--no-align",
+            "--tuples-only",
+            "--command",
+            (
+                "select relname || ':' || relrowsecurity || ':' || "
+                "relforcerowsecurity from pg_class where relname in "
+                "('entries','entry_revisions','ai_processing',"
+                "'entry_history_positions') order by relname;"
+            ),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert set(rls_catalog.stdout.splitlines()) == {
+        "ai_processing:true:true",
+        "entries:true:true",
+        "entry_history_positions:true:true",
+        "entry_revisions:true:true",
+    }

@@ -326,6 +326,28 @@ class SupabaseEntryStore:
         if not rows:
             raise EntryStoreUnavailable
 
+        return self._parse_history_slice(rows)
+
+    async def get_history_window(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+    ) -> HistorySlice:
+        rows = await self._rpc(
+            "get_diary_entry_history_window_v1",
+            {"p_entry_id": str(entry_id)},
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+
+        return self._parse_history_slice(rows)
+
+    @staticmethod
+    def _parse_history_slice(
+        rows: list[dict[str, Any]],
+    ) -> HistorySlice:
         first_metadata = {
             "has_older": rows[0].get("has_older"),
             "has_newer": rows[0].get("has_newer"),

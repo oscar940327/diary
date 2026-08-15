@@ -112,11 +112,14 @@ def test_entry_time_change_rebuilds_loaded_history_on_one_new_snapshot(
     moving_content = f"Window {old_date} hour 19."
     moving_entry = seeded_entries[moving_content]
     history_requests: list[str] = []
+    history_window_requests: list[str] = []
 
     def record_history_request(request: Request) -> None:
         url = request.url
         if urlsplit(url).path.endswith("/entries/history"):
             history_requests.append(url)
+        elif urlsplit(url).path.endswith("/history-window"):
+            history_window_requests.append(url)
 
     page.on("request", record_history_request)
     page.set_viewport_size({"width": 390, "height": 844})
@@ -159,10 +162,12 @@ def test_entry_time_change_rebuilds_loaded_history_on_one_new_snapshot(
         f"{new_date}T23:59"
     )
     post_change_start = len(history_requests)
+    post_change_window_start = len(history_window_requests)
     with page.expect_response(
         lambda response: (
-            urlsplit(response.url).path.endswith("/entries/history")
-            and "cursor" not in parse_qs(urlsplit(response.url).query)
+            urlsplit(response.url).path.endswith(
+                f"/entries/{moving_entry['id']}/history-window"
+            )
         )
     ):
         editor.get_by_role("button", name="Save Entry Time").click()
@@ -181,8 +186,11 @@ def test_entry_time_change_rebuilds_loaded_history_on_one_new_snapshot(
         moved_group.get_by_role("heading", name=new_date, exact=True)
     ).to_be_visible()
 
-    rebuilt_request_urls = history_requests[post_change_start:]
-    assert 1 <= len(rebuilt_request_urls) <= 5
+    rebuilt_request_urls = history_window_requests[
+        post_change_window_start:
+    ]
+    assert len(rebuilt_request_urls) == 1
+    assert history_requests[post_change_start:] == []
 
     page.get_by_role("button", name="Load newer Entries").click()
     expect(page.locator("article.diary-entry")).to_have_count(40)
@@ -203,7 +211,7 @@ def test_entry_time_change_rebuilds_loaded_history_on_one_new_snapshot(
     assert len(rendered_ids) < len(seeded_entries)
 
     post_change_request_urls = history_requests[post_change_start:]
-    assert len(post_change_request_urls) == len(rebuilt_request_urls) + 2
+    assert len(post_change_request_urls) == 2
     post_change_snapshots = {
         snapshot
         for snapshot in (
@@ -250,7 +258,7 @@ def test_entry_time_change_rebuilds_loaded_history_on_one_new_snapshot(
     ).to_be_visible()
 
 
-def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
+def test_entry_time_change_finds_rank_121_active_entry_in_one_bounded_window(
     page: Page,
     diary_api: str,
     diary_application: str,
@@ -312,28 +320,34 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
                         f"dense-history-window-{owner_date}-{hour:02d}"
                     ),
                 )
-        for minute in range(40):
-            content = f"Dense target {dense_date} rank {minute:02d}."
+        for rank in range(120):
+            content = f"Dense target {dense_date} rank {rank:03d}."
             seeded_entries[content] = _capture_history_entry(
                 client,
                 diary_api,
                 owner_access_token,
                 content=content,
-                entry_at=f"{dense_date}T12:{minute:02d}:00+08:00",
-                idempotency_key=f"dense-target-{dense_date}-{minute:02d}",
+                entry_at=(
+                    f"{dense_date}T{1 + rank // 60:02d}:"
+                    f"{rank % 60:02d}:00+08:00"
+                ),
+                idempotency_key=f"dense-target-{dense_date}-{rank:03d}",
             )
 
-    assert len(seeded_entries) == 140
+    assert len(seeded_entries) == 220
     reading_content = f"Dense window {anchor_date} hour 19."
     moving_content = f"Dense window {anchor_date} hour 18."
     reading_entry = seeded_entries[reading_content]
     moving_entry = seeded_entries[moving_content]
     history_requests: list[str] = []
+    history_window_requests: list[str] = []
 
     def record_history_request(request: Request) -> None:
         url = request.url
         if urlsplit(url).path.endswith("/entries/history"):
             history_requests.append(url)
+        elif urlsplit(url).path.endswith("/history-window"):
+            history_window_requests.append(url)
 
     page.on("request", record_history_request)
     page.set_viewport_size({"width": 390, "height": 844})
@@ -360,10 +374,12 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
     editor = page.get_by_role("dialog", name="Change Entry Time")
     editor.get_by_label("New Entry Time").fill(f"{dense_date}T00:00")
     post_change_start = len(history_requests)
+    post_change_window_start = len(history_window_requests)
     with page.expect_response(
         lambda response: (
-            urlsplit(response.url).path.endswith("/entries/history")
-            and "cursor" not in parse_qs(urlsplit(response.url).query)
+            urlsplit(response.url).path.endswith(
+                f"/entries/{moving_entry['id']}/history-window"
+            )
         )
     ):
         editor.get_by_role("button", name="Save Entry Time").click()
@@ -378,15 +394,18 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
         )
     ).to_be_visible()
     rebuilt_count = page.locator("article.diary-entry").count()
-    assert 20 <= rebuilt_count <= 100
+    assert 1 <= rebuilt_count <= 20
     assert rebuilt_count < len(seeded_entries)
     moved_group = moved_entry.locator("xpath=ancestor::section[1]")
     expect(
         moved_group.get_by_role("heading", name=dense_date, exact=True)
     ).to_be_visible()
 
-    rebuilt_request_urls = history_requests[post_change_start:]
-    assert 1 <= len(rebuilt_request_urls) <= 5
+    rebuilt_request_urls = history_window_requests[
+        post_change_window_start:
+    ]
+    assert len(rebuilt_request_urls) == 1
+    assert history_requests[post_change_start:] == []
 
     newer_request_start = len(history_requests)
     page.get_by_role("button", name="Load newer Entries").click()
@@ -403,20 +422,16 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
         for url in history_requests[older_request_start:]
     )
 
-    for content in [
-        *(f"Dense target {dense_date} rank {minute:02d}." for minute in range(40)),
-        moving_content,
-    ]:
-        expect(page.get_by_text(content, exact=True)).to_have_count(1)
+    expect(page.get_by_text(moving_content, exact=True)).to_have_count(1)
     rendered_ids = page.locator("article.diary-entry").evaluate_all(
         "elements => elements.map(element => element.id)"
     )
-    assert len(rendered_ids) >= rebuilt_count + 40
+    assert len(rendered_ids) > rebuilt_count
     assert len(rendered_ids) == len(set(rendered_ids))
     assert len(rendered_ids) <= len(seeded_entries)
 
     post_change_request_urls = history_requests[post_change_start:]
-    assert len(post_change_request_urls) >= len(rebuilt_request_urls) + 2
+    assert len(post_change_request_urls) == 2
     post_change_snapshots = {
         snapshot
         for snapshot in (
@@ -453,7 +468,7 @@ def test_entry_time_change_finds_rank_41_active_entry_from_initial_window(
             "button",
             name=(
                 f"{dense_date_label}, "
-                f"{baseline_counts.get(dense_date, 0) + 41} Entries"
+                f"{baseline_counts.get(dense_date, 0) + 121} Entries"
             ),
         )
     ).to_be_visible()

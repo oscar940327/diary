@@ -31,6 +31,7 @@ from diary_api.entries import (
     EntryRecord,
     EntryRevisionRecord,
     EntryStoreUnavailable,
+    HistorySlice,
     SupabaseEntryStore,
     entry_store,
 )
@@ -174,6 +175,52 @@ class HistoryPage(BaseModel):
     groups: list[EntryDateGroup]
     older_cursor: str | None
     newer_cursor: str | None
+
+
+def history_page(
+    *,
+    anchor_date: date,
+    history: HistorySlice,
+) -> HistoryPage:
+    older_cursor = None
+    newer_cursor = None
+    if history.has_older:
+        if (
+            history.older_cursor_entry_at is None
+            or history.older_cursor_entry_id is None
+        ):
+            raise entry_service_unavailable()
+        older_cursor = encode_history_cursor(
+            HistoryCursor(
+                anchor_date=anchor_date,
+                direction="older",
+                entry_at=history.older_cursor_entry_at,
+                entry_id=history.older_cursor_entry_id,
+                snapshot=history.snapshot,
+            )
+        )
+    if history.has_newer:
+        if (
+            history.newer_cursor_entry_at is None
+            or history.newer_cursor_entry_id is None
+        ):
+            raise entry_service_unavailable()
+        newer_cursor = encode_history_cursor(
+            HistoryCursor(
+                anchor_date=anchor_date,
+                direction="newer",
+                entry_at=history.newer_cursor_entry_at,
+                entry_id=history.newer_cursor_entry_id,
+                snapshot=history.snapshot,
+            )
+        )
+
+    return HistoryPage(
+        anchor_date=anchor_date,
+        groups=group_entries(history.entries),
+        older_cursor=older_cursor,
+        newer_cursor=newer_cursor,
+    )
 
 
 app = FastAPI(title="Diary API")
@@ -438,44 +485,40 @@ async def list_history_entries(
     except EntryStoreUnavailable as error:
         raise entry_service_unavailable() from error
 
-    older_cursor = None
-    newer_cursor = None
-    if history.has_older:
-        if (
-            history.older_cursor_entry_at is None
-            or history.older_cursor_entry_id is None
-        ):
-            raise entry_service_unavailable()
-        older_cursor = encode_history_cursor(
-            HistoryCursor(
-                anchor_date=resolved_anchor,
-                direction="older",
-                entry_at=history.older_cursor_entry_at,
-                entry_id=history.older_cursor_entry_id,
-                snapshot=history.snapshot,
-            )
-        )
-    if history.has_newer:
-        if (
-            history.newer_cursor_entry_at is None
-            or history.newer_cursor_entry_id is None
-        ):
-            raise entry_service_unavailable()
-        newer_cursor = encode_history_cursor(
-            HistoryCursor(
-                anchor_date=resolved_anchor,
-                direction="newer",
-                entry_at=history.newer_cursor_entry_at,
-                entry_id=history.newer_cursor_entry_id,
-                snapshot=history.snapshot,
-            )
-        )
-
-    return HistoryPage(
+    return history_page(
         anchor_date=resolved_anchor,
-        groups=group_entries(history.entries),
-        older_cursor=older_cursor,
-        newer_cursor=newer_cursor,
+        history=history,
+    )
+
+
+@app.get(
+    "/entries/{entry_id}/history-window",
+    response_model=HistoryPage,
+)
+async def get_entry_history_window(
+    entry_id: UUID,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> HistoryPage:
+    try:
+        history = await store.get_history_window(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+
+    target = next(
+        (entry for entry in history.entries if entry.id == entry_id),
+        None,
+    )
+    if target is None or len(history.entries) > 20:
+        raise entry_service_unavailable()
+    return history_page(
+        anchor_date=target.owner_date,
+        history=history,
     )
 
 

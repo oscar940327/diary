@@ -15,13 +15,13 @@
 - [x] Invalid timestamps are rejected without partial changes.
 - [x] Changing Entry Time alone does not invalidate or regenerate AI interpretation of unchanged Original Content.
 - [x] System and browser tests cover same-day changes, cross-day moves, timezone boundaries, and unchanged revision count.
-- [ ] After a successful Entry Time change, History visibly positions the moved Entry and a clear success message names its new `Asia/Taipei` date.
-- [ ] Recovery uses `GET /entries/{entry_id}/history-window` to install a fixed-size bounded fresh History window that guarantees the moved active Entry is present and provides usable older/newer cursors.
-- [ ] Scroll, keyboard scroll, scrollbar use, Calendar switching, Calendar-date selection, and History switching during an in-flight recovery take viewport ownership, so a superseded anchor cannot pull the viewport back.
-- [ ] A still-current recovery generation may install fresh data after viewport ownership changes without repositioning the viewport.
-- [ ] Entry Time recovery viewport cancellation is separate from ordinary History pagination anchoring, so Ticket 04 older/newer anchor restoration remains unchanged.
-- [ ] The frontend does not scan a fixed number of ordinary History pages, cap recovery at five pages or 100 Entries, or download complete History to locate the moved Entry.
-- [ ] The Entry-centered interface uses one fresh snapshot, microsecond Entry Time plus Entry UUID stable ordering, FastAPI owner authorization, and PostgreSQL RLS; non-owner, trashed, and nonexistent targets disclose no Entry or surrounding History data.
+- [x] After a successful Entry Time change, History visibly positions the moved Entry and a clear success message names its new `Asia/Taipei` date.
+- [x] Recovery uses `GET /entries/{entry_id}/history-window` to install a fixed-size bounded fresh History window that guarantees the moved active Entry is present and provides usable older/newer cursors.
+- [x] Scroll, keyboard scroll, scrollbar use, Calendar switching, Calendar-date selection, and History switching during an in-flight recovery take viewport ownership, so a superseded anchor cannot pull the viewport back.
+- [x] A still-current recovery generation may install fresh data after viewport ownership changes without repositioning the viewport.
+- [x] Entry Time recovery viewport cancellation is separate from ordinary History pagination anchoring, so Ticket 04 older/newer anchor restoration remains unchanged.
+- [x] The frontend does not scan a fixed number of ordinary History pages, cap recovery at five pages or 100 Entries, or download complete History to locate the moved Entry.
+- [x] The Entry-centered interface uses one fresh snapshot, microsecond Entry Time plus Entry UUID stable ordering, FastAPI owner authorization, and PostgreSQL RLS; non-owner, trashed, and nonexistent targets disclose no Entry or surrounding History data.
 
 ## Comments
 
@@ -4748,3 +4748,117 @@ CI/system-test alignment otherwise match the confirmed Ticket 08 contract.
   implementation, complete local and exact-SHA CI validation, and another
   fresh independent complete fixed-range review.
 - Ticket 09 remains blocked by Ticket 08 and has **not started**.
+
+### 2026-08-16 - Bounded Entry-centered implementation preflight
+
+- This is a Ticket 08 implementation/TDD session. It is not a review, does
+  not claim Ticket 08 Passed, and does not start Ticket 09.
+- Diary began clean on `main` at the requested documentation commit
+  `26dca82b2f83eca66ffd77c6bfd7caea9596d6f8`.
+- Personal Website began clean on `main` at the currently reviewed Ticket 08
+  implementation endpoint
+  `e1fe1dfb08e07934eabc7d5977f647a5aa24de29`.
+- Personal Website Head exactly matched its `origin/main`. Diary was clean at
+  the explicitly requested local documentation commit `26dca82...`, one
+  documentation commit above its `origin/main` tracking ref
+  `ddfcfd3c46e6f0112ade301a19c27448ad5636ce`. These two recorded Head SHAs are
+  the fixed implementation bases for the next independent complete fixed-range
+  review.
+- All preceding Ticket 08 comments, reviews, findings and finding-fix records
+  remain preserved above. Only the bounded Entry-centered contract and the
+  distinct recovery-versus-pagination anchor blocker are in scope.
+
+### 2026-08-16 - Bounded Entry-centered implementation complete; independent review required
+
+#### Fixed implementation range and scope
+
+- Fixed bases recorded before tracked changes were Diary
+  `26dca82b2f83eca66ffd77c6bfd7caea9596d6f8` and Personal Website
+  `e1fe1dfb08e07934eabc7d5977f647a5aa24de29`; both repositories were clean and
+  on `main`. Personal Website matched `origin/main`; the requested Diary
+  documentation base was the clean local commit immediately above
+  `origin/main` `ddfcfd3c46e6f0112ade301a19c27448ad5636ce`.
+- The Personal Website implementation endpoint is
+  `6a8507f59c9470b6cd8c1a67ae13609d00cddb09`. Diary CI is pinned to that exact
+  SHA. The Diary endpoint is the local commit containing this record.
+- Only Ticket 08 was implemented. Calendar, search-result, RAG citation,
+  Trash, and permanent-deletion integrations were not added. Ticket 09 was
+  not started.
+
+#### Implementation
+
+- Migration `20260816120000_add_entry_centered_history_window.sql` adds the
+  security-invoker `get_diary_entry_history_window_v1` data-boundary RPC.
+  `GET /entries/{entry_id}/history-window` exposes one fresh snapshot containing
+  the authenticated owner's active target, at most the existing 20-Entry
+  bound, stable `(entry_at, id)` ordering, and continuation cursors from the
+  returned oldest and newest bounds. Available capacity is reallocated near
+  either lifetime-History edge so a 20-row History still returns 20 rows.
+- FastAPI singleton-owner authorization remains in front of the route and the
+  RPC independently executes under forced PostgreSQL RLS. Foreign-owner,
+  trashed, and nonexistent UUIDs all produce the same `404` body and return no
+  History data; a non-owner cannot use either the protected API or direct RPC
+  to read the target.
+- The frontend makes exactly one Entry-centered request after commit or
+  `Refresh History`, installs only that response and its cursors, positions the
+  moved card, and preserves `Entry Time changed to YYYY-MM-DD
+  (Asia/Taipei).`. The former fixed five-page/100-Entry recovery loop is
+  removed.
+- Recovery viewport ownership and ordinary pagination anchoring now use
+  separate state. Wheel, keyboard, scrollbar, Calendar, Calendar-date, and
+  History actions can retire recovery positioning. An older/newer pagination
+  request retains its Ticket 04 anchor across intent that occurs while the
+  request is pending, then relinquishes stale layout ownership after its first
+  restoration frame.
+
+#### TDD evidence
+
+- Backend Red:
+  `python -m pytest -q --tb=short tests/system/test_continuous_history.py -k entry_centered_window`
+  reached the unchanged product and failed `3 failed, 5 deselected` because
+  the route returned `404`. A later edge-allocation Red failed
+  `1 failed, 8 deselected` with `11 == 20` against the first SQL version.
+- Frontend Red:
+  `npm.cmd run test:e2e -- --workers=4 --retries=0 --grep "Entry Time recovery uses one bounded|delayed ordinary" --output=test-results/ticket08-red-entry-centered`
+  failed all three new cases: the former scan left recovery unavailable and
+  delayed older/newer pagination lost their Ticket 04 anchors.
+- Focused Green: the final Entry-centered backend set passed
+  `4 passed, 5 deselected in 72.79s`; the two real mobile browser journeys
+  passed `2 passed, 1 deselected in 49.35s`; the three new focused frontend
+  cases passed `3 passed in 2.9s`; the focused recovery/pagination separation
+  set passed `3 passed in 2.8s`; and complete
+  `continuous-history.spec.ts` passed `26 passed in 13.9s`.
+- Regressions put the moved target at rank 121, continue both fresh cursors
+  without duplicates or omissions, exclude a newly committed Entry placed
+  directly in a continuation range, fill the fixed bound at a History edge,
+  cover equal-microsecond UUID ties, verify identical non-disclosure and
+  forced-RLS catalog state, exercise all specified viewport actions, and
+  assert zero ordinary-page recovery requests.
+
+#### Exact-final local validation
+
+- Diary `python -m mypy src tests`: exit `0`, no issues in 21 source files.
+- Diary
+  `$env:DIARY_FRONTEND_REPOSITORY='<fixed Personal Website checkout>'; python -m pytest -q --tb=short`:
+  exit `0`, `90 passed, 2 warnings in 375.88s`, with no retry. The warnings are
+  the existing Starlette/httpx deprecation and local pytest-cache permission
+  warning.
+- Personal Website `npm.cmd run typecheck`: exit `0`.
+- Personal Website
+  `npm.cmd run test:e2e -- --workers=4 --retries=0 --output=test-results/ticket08-bounded-final-complete-2`:
+  exit `0`, all `45` Chromium tests passed with exactly four workers and zero
+  retries in `21.7s`. Mocked API-unavailable cases emitted their expected Vite
+  proxy refusal messages without test failures.
+- Personal Website `npm.cmd run build`: exit `0`, 77 modules transformed; only
+  the existing non-module-script warnings were emitted. `npm.cmd run
+  verify:build`: exit `0`, GitHub Pages output verified.
+- Final `git diff --check` commands passed. No push or remote state change was
+  performed.
+
+#### Workflow status
+
+- Ticket 08 remains `ready-for-agent`, **not Passed**. This implementation and
+  its passing tests are evidence, not an independent review. A later fresh
+  independent complete fixed-range review must inspect both repositories and
+  establish exact-SHA CI results before Ticket 08 may be marked Passed.
+- Ticket 09 remains blocked and unstarted.
