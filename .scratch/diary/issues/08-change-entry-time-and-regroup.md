@@ -4862,3 +4862,132 @@ CI/system-test alignment otherwise match the confirmed Ticket 08 contract.
   independent complete fixed-range review must inspect both repositories and
   establish exact-SHA CI results before Ticket 08 may be marked Passed.
 - Ticket 09 remains blocked and unstarted.
+
+### 2026-08-21 - Independent complete fixed-range review Passed
+
+#### Verdict and reviewed endpoints
+
+- **Standards review: PASS** — 0 findings (0 blocking, 0 non-blocking).
+- **Spec review: PASS** — 0 findings (0 blocking, 0 non-blocking).
+- **Overall verdict: PASSED. Ticket 08 review Passed.** No blocking finding
+  remains at the four fixed endpoints below, so no corrective implementation
+  scope is required.
+- Diary Base: `26dca82b2f83eca66ffd77c6bfd7caea9596d6f8`.
+- Diary Head: `fe3730f8536d16b398a6bd476725139fe6e4fe7b`.
+- Personal Website Base:
+  `e1fe1dfb08e07934eabc7d5977f647a5aa24de29`.
+- Personal Website Head:
+  `6a8507f59c9470b6cd8c1a67ae13609d00cddb09`.
+- Both Base and Head refs resolved, each merge-base exactly matched the
+  requested Base, both three-dot ranges were non-empty, and both worktrees
+  began clean on the requested Head. At final audit each Head also exactly
+  matched `origin/main`; both fixed-range `git diff --check` commands passed.
+
+#### Standards review
+
+- Every hunk in the seven-file Diary range and three-file Personal Website
+  range was independently reviewed against `AGENTS.md`, the development and
+  domain workflow, `CONTEXT.md`, the project specification and Ticket 08,
+  every ADR with particular attention to ADR 0017, both repositories'
+  documented build conventions, and the code-review smell baseline.
+- The additive ordered SQL migration preserves the preceding application
+  contract, uses a `security invoker` authenticated-only RPC, and keeps the
+  existing forced-RLS path behind FastAPI `require_owner`. This conforms to
+  ADRs 0013, 0015, 0016 and 0017 rather than weakening defense in depth.
+- The backend workflow pins the exact reviewed frontend Head. Frontend work
+  stays inside the existing React/TypeScript Diary surface and preserves the
+  static-site composition required by ADRs 0004 and 0005.
+- No documented-standard violation or qualifying new Fowler-baseline smell
+  was found. The named recovery/pagination anchor types clarify the required
+  ownership split, while removal of the fixed-page traversal reduces obsolete
+  branching and speculative recovery machinery.
+
+#### Spec review
+
+- `GET /entries/{entry_id}/history-window` is backed by one fixed 20-Entry
+  data-boundary window. Its target-containing allocation guarantees the
+  active owner-owned target appears even at former rank 121, without any
+  five-page, 100-Entry or other ordinary-History scan.
+- One `pg_current_snapshot()` governs target and surrounding membership. SQL
+  and client ordering preserve microsecond Entry Time plus Entry UUID, and
+  the oldest/newest returned bounds create usable same-snapshot continuation
+  cursors without duplicates, omissions or post-snapshot insertions.
+- Foreign-owner, trashed and missing targets return the same `404` body and no
+  target or surrounding History data. A non-owner fails FastAPI owner
+  authorization, while direct authenticated RPC access independently returns
+  no rows through forced PostgreSQL RLS.
+- The frontend uses one Entry-centered request for commit, retry and refresh
+  recovery. Recovery viewport ownership is distinct from an ordinary
+  pagination anchor: wheel, keyboard, scrollbar, Calendar/date and History
+  intent can cancel only recovery positioning, while delayed Ticket 04
+  older/newer pagination retains its anchor restoration.
+- No Ticket 09, Trash/permanent-delete, Calendar navigation, direct-search
+  result, or RAG citation integration with the Entry-centered interface was
+  added. The fixed-range source scan found no such premature implementation.
+- The changed system and Chromium coverage directly exercises the bounded
+  rank-121 target, fixed-edge allocation, microsecond/UUID ties, snapshot
+  continuation, identical non-disclosure, FastAPI/RLS defense in depth, zero
+  ordinary recovery requests, all recovery-cancellation actions, and separate
+  delayed older/newer pagination anchors.
+
+#### Fresh local verification
+
+- Personal Website `npm.cmd run typecheck`: exit `0`.
+- Personal Website `npm.cmd run test:e2e -- --workers=4 --retries=0
+  --output=test-results/ticket08-independent-review-20260821`: exit `0`, all
+  `45` Chromium tests passed in `20.4s` with exactly four workers and zero
+  retries. Expected mocked-API proxy refusal messages did not fail the suite.
+- Personal Website `npm.cmd run build`: exit `0`, 77 modules transformed;
+  only the existing classic-script informational warnings appeared.
+  `npm.cmd run verify:build`: exit `0` and verified the Pages output.
+- Diary `python -m mypy src tests`: exit `0`, no issues in 21 source files.
+- Diary with `DIARY_FRONTEND_REPOSITORY` fixed to the exact reviewed Website
+  checkout, `python -m pytest -q --tb=short`: exit `0`, **90 passed**, one
+  existing Starlette/httpx deprecation warning, in `328.76s`. This was a new
+  complete run against real local Supabase/PostgreSQL/PostgREST/FastAPI and
+  browser seams, not reliance on the implementation record.
+- Preceding attempts exposed only local-environment blockers: sandboxed
+  Supabase telemetry writes, a stopped Docker engine, and Steam temporarily
+  owning Mailpit's `127.0.0.1:54324`. After Docker was started and the port
+  conflict was removed, the clean complete command above passed. Steam was
+  restarted afterward and `supabase stop --no-backup` successfully cleaned up
+  the manually started test services.
+
+#### Exact-SHA GitHub Actions
+
+- Diary Head `fe3730f8536d16b398a6bd476725139fe6e4fe7b`: `Backend
+  checks` push run `31909227821` completed **success**. Job `test`, including
+  exact frontend checkout, type-check and test steps, completed success:
+  https://github.com/oscar940327/diary/actions/runs/31909227821
+- Personal Website Head `6a8507f59c9470b6cd8c1a67ae13609d00cddb09`:
+  `Website checks and Pages` push run `31909054678` completed **success**.
+  Jobs `build` and `deploy`, including type-check, browser journeys, build,
+  preserved-output verification and Pages deployment, completed success:
+  https://github.com/oscar940327/my-personal-website/actions/runs/31909054678
+- The same Website exact SHA also has dynamic `pages build and deployment`
+  run `31909054413` completed **success** with build, deploy and status-report
+  jobs successful:
+  https://github.com/oscar940327/my-personal-website/actions/runs/31909054413
+
+#### Final scope and workflow record
+
+- No product source was modified by this review. Only this required Ticket 08
+  comment was appended; no commit, push, PR, release or deployment action was
+  performed.
+- Ticket 08's latest bounded Entry-centered History implementation is
+  independently reviewed and **Passed** at the exact four SHAs recorded above.
+- Ticket 09 remains unstarted. This review did not implement it or any later
+  Calendar, search or RAG citation integration.
+
+#### Ticket completion
+
+- Ticket 08's final review **Passed**.
+- Diary final implementation SHA:
+  `fe3730f8536d16b398a6bd476725139fe6e4fe7b`.
+- Personal Website final implementation SHA:
+  `6a8507f59c9470b6cd8c1a67ae13609d00cddb09`.
+- Diary `Backend checks` passed for the exact final implementation SHA.
+- Personal Website `Website checks and Pages` and Pages deployment passed for
+  the exact final implementation SHA.
+- Ticket 08 is complete.
+- Ticket 09 has not started.

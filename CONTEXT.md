@@ -358,14 +358,10 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 08 remains `ready-for-agent` and is the only next step. Its latest fresh
-complete fixed-range review remains **CHANGES-REQUIRED**. The preserved
-beyond-rank-80 finding assumed the now-superseded requirement that recovery
-must simultaneously locate the moved Entry and preserve an arbitrarily distant
-Reading Entry. The confirmed MVP instead targets the moved Entry with bounded
-fresh History data and does not require both Entries in one window. Ticket 08
-still requires TDD implementation of that behavior and of Viewport Ownership
-across in-flight recovery, followed by exact-SHA CI and another fresh
-independent complete review. ADR 0016's drained Maintenance Window remains
-effective; Ticket 09 has not started and cannot start until Ticket 08 passes
-all gates.
+Ticket 08's reviewed implementation has been pushed: Diary
+`fe3730f8536d16b398a6bd476725139fe6e4fe7b` and Personal Website
+`6a8507f59c9470b6cd8c1a67ae13609d00cddb09`. Its final independent complete
+fixed-range review Passed, and the latest exact-SHA GitHub Actions are all
+green: Diary `Backend checks`, Personal Website `Website checks and Pages`,
+and Pages deployment. Ticket 08 is complete. Ticket 09 has not started and is
+the next Ticket that may be started.
