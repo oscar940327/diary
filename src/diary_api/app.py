@@ -33,6 +33,7 @@ from diary_api.entries import (
     EntryStoreUnavailable,
     HistorySlice,
     SupabaseEntryStore,
+    TrashEntryRecord,
     entry_store,
 )
 from diary_api.owner_registry import (
@@ -127,6 +128,12 @@ class ChangeEntryTimeRequest(BaseModel):
     entry_at: NormalizedEntryTime
 
 
+class PermanentDeleteRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation: Literal["PERMANENTLY DELETE"]
+
+
 class EntryRevisionHistory(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -155,6 +162,12 @@ class CalendarMonth(BaseModel):
     month: str
     time_zone: Literal["Asia/Taipei"]
     days: list[CalendarDay]
+
+
+class TrashListing(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    entries: list[TrashEntryRecord]
 
 
 class HistoryCursor(BaseModel):
@@ -388,6 +401,86 @@ async def list_today_entries(
     except EntryStoreUnavailable as error:
         raise entry_service_unavailable() from error
     return EntryDateGroup(date=owner_date, entries=entries)
+
+
+@app.post(
+    "/entries/{entry_id}/trash",
+    response_model=TrashEntryRecord,
+)
+async def move_entry_to_trash(
+    entry_id: UUID,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> TrashEntryRecord:
+    try:
+        return await store.move_to_trash(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+
+
+@app.get(
+    "/trash",
+    response_model=TrashListing,
+)
+async def list_trash_entries(
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> TrashListing:
+    try:
+        entries = await store.list_trash(
+            access_token=owner.access_token,
+        )
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+    return TrashListing(entries=entries)
+
+
+@app.post(
+    "/trash/{entry_id}/restore",
+    response_model=EntryRecord,
+)
+async def restore_entry_from_trash(
+    entry_id: UUID,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> EntryRecord:
+    try:
+        return await store.restore_from_trash(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+
+
+@app.delete(
+    "/trash/{entry_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def permanently_delete_entry(
+    entry_id: UUID,
+    request: PermanentDeleteRequest,
+    owner: AuthenticatedIdentity = Depends(require_owner),
+    store: SupabaseEntryStore = Depends(entry_store),
+) -> Response:
+    try:
+        await store.permanently_delete(
+            access_token=owner.access_token,
+            entry_id=entry_id,
+            confirmation=request.confirmation,
+        )
+    except EntryNotFound as error:
+        raise entry_not_found() from error
+    except EntryStoreUnavailable as error:
+        raise entry_service_unavailable() from error
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @app.get(

@@ -39,6 +39,11 @@ class EntryRecord(BaseModel):
     ]
 
 
+class TrashEntryRecord(EntryRecord):
+    revision_count: int
+    trashed_at: datetime
+
+
 class CalendarDayCount(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -139,6 +144,84 @@ class SupabaseEntryStore:
             ]
         except ValueError as error:
             raise EntryStoreUnavailable from error
+
+    async def move_to_trash(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+    ) -> TrashEntryRecord:
+        rows = await self._rpc(
+            "move_diary_entry_to_trash",
+            {"p_entry_id": str(entry_id)},
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        if len(rows) != 1:
+            raise EntryStoreUnavailable
+        try:
+            return TrashEntryRecord.model_validate(rows[0])
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def list_trash(
+        self,
+        *,
+        access_token: str,
+    ) -> list[TrashEntryRecord]:
+        rows = await self._rpc(
+            "list_diary_trash",
+            {},
+            access_token=access_token,
+        )
+        try:
+            return [
+                TrashEntryRecord.model_validate(row)
+                for row in rows
+            ]
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def restore_from_trash(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+    ) -> EntryRecord:
+        rows = await self._rpc(
+            "restore_diary_entry_from_trash",
+            {"p_entry_id": str(entry_id)},
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        if len(rows) != 1:
+            raise EntryStoreUnavailable
+        try:
+            return EntryRecord.model_validate(rows[0])
+        except ValueError as error:
+            raise EntryStoreUnavailable from error
+
+    async def permanently_delete(
+        self,
+        *,
+        access_token: str,
+        entry_id: UUID,
+        confirmation: str,
+    ) -> None:
+        rows = await self._rpc(
+            "permanently_delete_diary_entry",
+            {
+                "p_entry_id": str(entry_id),
+                "p_confirmation": confirmation,
+            },
+            access_token=access_token,
+        )
+        if not rows:
+            raise EntryNotFound
+        if rows != [{"deleted": True}]:
+            raise EntryStoreUnavailable
 
     async def get(
         self,

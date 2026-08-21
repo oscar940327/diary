@@ -703,6 +703,104 @@ def test_owner_completes_magic_link_on_mobile_and_reaches_diary(
         )
     ).to_be_visible()
 
+    reloaded_entry = page.locator("article.diary-entry").filter(
+        has_text=(
+            "Mobile system capture keeps the complete Original Content."
+        )
+    )
+    reloaded_entry.get_by_text("Entry actions", exact=True).click()
+    reloaded_entry.get_by_role(
+        "button",
+        name="Move to Trash",
+        exact=True,
+    ).click()
+    move_confirmation = page.get_by_role(
+        "dialog",
+        name="Move Entry to Trash?",
+    )
+    expect(move_confirmation).to_contain_text(
+        "recoverable and does not permanently delete any revision"
+    )
+    move_confirmation.get_by_role(
+        "button",
+        name="Move to Trash",
+        exact=True,
+    ).click()
+    expect(reloaded_entry).to_have_count(0)
+
+    page.get_by_role("button", name="Trash", exact=True).click()
+    trash_entry = page.locator("article.diary-trash-entry").filter(
+        has_text=(
+            "Mobile system capture keeps the complete Original Content."
+        )
+    )
+    expect(trash_entry).to_be_visible()
+    expect(trash_entry).to_contain_text("3 revisions")
+    trash_entry.get_by_role("button", name="Restore", exact=True).click()
+    expect(trash_entry).to_have_count(0)
+    expect(
+        page.get_by_text(
+            f"Entry restored to {moved_owner_date} (Asia/Taipei).",
+            exact=True,
+        )
+    ).to_be_visible()
+
+    page.get_by_role("button", name="History", exact=True).click()
+    restored_from_trash = page.locator("article.diary-entry").filter(
+        has_text=(
+            "Mobile system capture keeps the complete Original Content."
+        )
+    )
+    expect(restored_from_trash).to_be_visible()
+    restored_from_trash.get_by_text("Entry actions", exact=True).click()
+    restored_from_trash.get_by_role(
+        "button",
+        name="Move to Trash",
+        exact=True,
+    ).click()
+    page.get_by_role(
+        "dialog",
+        name="Move Entry to Trash?",
+    ).get_by_role(
+        "button",
+        name="Move to Trash",
+        exact=True,
+    ).click()
+
+    page.get_by_role("button", name="Trash", exact=True).click()
+    permanent_entry = page.locator("article.diary-trash-entry").filter(
+        has_text=(
+            "Mobile system capture keeps the complete Original Content."
+        )
+    )
+    permanent_entry.get_by_role(
+        "button",
+        name="Delete permanently",
+        exact=True,
+    ).click()
+    permanent_dialog = page.get_by_role(
+        "dialog",
+        name="Permanently delete Entry?",
+    )
+    permanent_input = permanent_dialog.get_by_label(
+        "Type PERMANENTLY DELETE to confirm"
+    )
+    permanent_submit = permanent_dialog.get_by_role(
+        "button",
+        name="Permanently delete",
+        exact=True,
+    )
+    expect(permanent_submit).to_be_disabled()
+    permanent_input.fill("Permanently Delete")
+    expect(permanent_submit).to_be_disabled()
+    permanent_input.fill("PERMANENTLY DELETE")
+    expect(permanent_submit).to_be_enabled()
+    permanent_submit.click()
+    expect(permanent_entry).to_have_count(0)
+    expect(
+        page.get_by_text("Entry permanently deleted.", exact=True)
+    ).to_be_visible()
+
     page.get_by_role("button", name="Sign out").click()
     expect(
         page.get_by_role("heading", name="Sign in to Diary")

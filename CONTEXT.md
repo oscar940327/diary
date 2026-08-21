@@ -92,7 +92,8 @@ Items in this section are directions, not commitments to the first MVP.
 - Deleting an Entry moves it to a recoverable Trash instead of immediately destroying it.
 - Trashed Entries are excluded from the history, calendar, search, RAG, AI processing, and analysis.
 - Restoring an Entry returns it to normal use.
-- Permanent deletion requires an explicit confirmation and removes the Entry, all Entry Revisions, all derived AI results, and all vector-index records.
+- Ticket 09 permanent deletion requires the owner to manually enter the exact, case-sensitive confirmation value `PERMANENTLY DELETE`; the browser and FastAPI both validate it, and PostgreSQL validates it again before any destructive statement. The confirmation is not persisted and does not replace authentication, owner authorization, or RLS.
+- Permanent deletion removes the Entry, all Entry Revisions, all derived AI results, and all vector-index records.
 - The MVP does not automatically purge Trash; permanent deletion is initiated manually by the owner.
 - Diary is permanently a single-user product for its owner, not merely a single-user MVP.
 - Public registration, additional accounts, sharing, collaboration, and role management are not planned.
@@ -358,10 +359,9 @@ The MVP is a publicly reachable but owner-only web application, so unauthenticat
 
 ## Next item
 
-Ticket 08's reviewed implementation has been pushed: Diary
-`fe3730f8536d16b398a6bd476725139fe6e4fe7b` and Personal Website
-`6a8507f59c9470b6cd8c1a67ae13609d00cddb09`. Its final independent complete
-fixed-range review Passed, and the latest exact-SHA GitHub Actions are all
-green: Diary `Backend checks`, Personal Website `Website checks and Pages`,
-and Pages deployment. Ticket 08 is complete. Ticket 09 has not started and is
-the next Ticket that may be started.
+Ticket 08 is complete, review-Passed, pushed, and green at its exact reviewed
+SHAs. Ticket 09 has been implemented locally from fixed review bases Diary
+`869caaa1a0eb36e8489417c9f963abfbcc2f4df7` and Personal Website
+`6a8507f59c9470b6cd8c1a67ae13609d00cddb09`; its independent complete
+fixed-range review and push remain separate owner-authorized next steps.
+Ticket 10 has not started.
