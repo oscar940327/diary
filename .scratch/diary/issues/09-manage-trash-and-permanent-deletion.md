@@ -95,3 +95,51 @@
   remain unstarted. No push, review, release, or deployment was performed.
 - Ticket 09 remains `ready-for-agent` pending a fresh independent complete
   fixed-range code-review in a separate conversation.
+
+### 2026-08-23 - Personal Website Actions test-environment correction
+
+#### Blocking CI evidence and root cause
+
+- Personal Website pull-request workflow runs `32587521825` and `32587826294`
+  both failed only at `Test browser journeys`: `45 passed`, `2 failed`. Both
+  failures were the Ticket 09 cases in `tests/e2e/trash-management.spec.ts`;
+  dependency installation, Chromium installation, and type-check all passed.
+- GitHub Actions supplied the repository variable
+  `VITE_DIARY_API_URL=https://diary-api.invalid`, while the Trash listing
+  mocks intentionally intercept the test seam at `**/diary-api/trash`.
+  Because the runner did not control this public setting, Vite sent listing
+  requests to `https://diary-api.invalid/trash`; the mocks never received
+  them and both tests could not find their Trash cards.
+
+#### TDD correction
+
+- Red command set `CI=true` and the repository-style invalid API URL, then ran
+  the two Trash tests with two workers and zero retries. Result: `2 failed`.
+  The restore case could not find `#trash-entry-entry-trash-restore`; the
+  permanent-delete case timed out waiting for its Trash-card action.
+- The only Personal Website source change makes `scripts/run-playwright.mjs`
+  set the Playwright/Vite child-process value
+  `VITE_DIARY_API_URL=/diary-api`, beside its existing test-only Supabase
+  overrides. It does not change the workflow variable, production code, or a
+  later production build process and it never calls a real Diary API.
+- The identical focused command then passed: `2 passed in 1.8s`, two workers,
+  zero retries, while the parent environment still supplied
+  `https://diary-api.invalid`.
+
+#### Verification and implementation endpoints
+
+- Personal Website type-check passed. The complete Chromium suite passed:
+  `47 passed in 16.7s`, four workers. Production build passed with 78 modules
+  transformed, and `verify:build` passed.
+- Personal Website corrected implementation commit:
+  `e2bfbfab12bf1a958f33514cd7357cc44087bf30`. Diary CI now pins this exact
+  frontend SHA.
+- Diary mypy passed with no issues in 22 source files. The first complete
+  pytest attempt encountered only a stopped-Docker fixture setup blocker and
+  did not reach the affected system assertions. After Docker was restored, a
+  fresh complete run passed against the corrected local frontend and real
+  Supabase/PostgreSQL/PostgREST/FastAPI/Uvicorn/Chromium seams: `94 passed`,
+  one existing Starlette/httpx deprecation warning, in `388.81s`.
+- This correction remains Ticket 09 implementation work. Ticket 10 has not
+  started, Ticket 09 has not been marked review-Passed, and no code-review or
+  push was performed as part of the correction.
