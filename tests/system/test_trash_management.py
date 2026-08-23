@@ -68,6 +68,33 @@ def _history_entries(page: dict[str, object]) -> list[dict[str, object]]:
     ]
 
 
+def _continue_history(
+    diary_api: str,
+    access_token: str,
+    *,
+    direction: str,
+    cursor: str | None,
+    limit: int,
+) -> list[dict[str, object]]:
+    entries: list[dict[str, object]] = []
+    current_cursor = cursor
+    while current_cursor is not None:
+        response = httpx.get(
+            f"{diary_api}/entries/history",
+            headers=_owner_headers(access_token),
+            params={
+                "direction": direction,
+                "cursor": current_cursor,
+                "limit": limit,
+            },
+        )
+        assert response.status_code == 200, response.text
+        page = cast(dict[str, object], response.json())
+        entries.extend(_history_entries(page))
+        current_cursor = cast(str | None, page[f"{direction}_cursor"])
+    return entries
+
+
 def test_owner_moves_entry_to_trash_and_normal_views_exclude_it(
     diary_api: str,
     owner_access_token: str,
@@ -265,6 +292,130 @@ def test_owner_restores_trashed_entry_with_revisions_and_processing_intact(
     assert calendar_response.json()["days"] == [
         {"date": "2051-01-02", "entry_count": 1}
     ]
+
+
+def test_restore_starts_a_new_history_snapshot_membership_generation(
+    diary_api: str,
+    local_supabase: SupabaseSettings,
+    owner_access_token: str,
+) -> None:
+    controls = [
+        _capture_entry(
+            diary_api,
+            owner_access_token,
+            content=f"Ticket 09 restore snapshot control {day}.",
+            entry_at=f"2088-04-{day:02d}T12:00:00+08:00",
+            idempotency_key=f"ticket-09-restore-snapshot-control-{day}",
+        )
+        for day in range(1, 8)
+    ]
+    distant = _capture_entry(
+        diary_api,
+        owner_access_token,
+        content="Ticket 09 distant restored snapshot membership.",
+        entry_at="1901-01-01T12:00:00+08:00",
+        idempotency_key="ticket-09-restore-snapshot-distant",
+    )
+    trash_response = httpx.post(
+        f"{diary_api}/entries/{distant['id']}/trash",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert trash_response.status_code == 200, trash_response.text
+
+    expected_response = httpx.get(
+        f"{local_supabase.api_url}/rest/v1/entries",
+        headers=_postgrest_headers(local_supabase, owner_access_token),
+        params={"select": "id", "trashed_at": "is.null"},
+    )
+    assert expected_response.status_code == 200, expected_response.text
+    expected_old_ids = {
+        str(row["id"])
+        for row in cast(list[dict[str, object]], expected_response.json())
+    }
+    assert {str(entry["id"]) for entry in controls} <= expected_old_ids
+    assert str(distant["id"]) not in expected_old_ids
+
+    initial_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={"anchor_date": "2088-04-04", "limit": 2},
+    )
+    assert initial_response.status_code == 200, initial_response.text
+    initial = cast(dict[str, object], initial_response.json())
+    assert initial["older_cursor"] is not None
+    assert initial["newer_cursor"] is not None
+    assert distant["id"] not in {
+        entry["id"] for entry in _history_entries(initial)
+    }
+
+    restore_response = httpx.post(
+        f"{diary_api}/trash/{distant['id']}/restore",
+        headers=_owner_headers(owner_access_token),
+    )
+    assert restore_response.status_code == 200, restore_response.text
+
+    old_older_entries = _continue_history(
+        diary_api,
+        owner_access_token,
+        direction="older",
+        cursor=cast(str | None, initial["older_cursor"]),
+        limit=2,
+    )
+    old_newer_entries = _continue_history(
+        diary_api,
+        owner_access_token,
+        direction="newer",
+        cursor=cast(str | None, initial["newer_cursor"]),
+        limit=2,
+    )
+    assert distant["id"] not in {
+        entry["id"] for entry in old_older_entries
+    }
+    assert distant["id"] not in {
+        entry["id"] for entry in old_newer_entries
+    }
+    old_traversal = (
+        old_older_entries + _history_entries(initial) + old_newer_entries
+    )
+    old_ids = [str(entry["id"]) for entry in old_traversal]
+    assert set(old_ids) == expected_old_ids
+    assert len(old_ids) == len(set(old_ids))
+
+    fresh_response = httpx.get(
+        f"{diary_api}/entries/history",
+        headers=_owner_headers(owner_access_token),
+        params={"anchor_date": "2088-04-04", "limit": 2},
+    )
+    assert fresh_response.status_code == 200, fresh_response.text
+    fresh = cast(dict[str, object], fresh_response.json())
+    assert fresh["older_cursor"] is not None
+    assert fresh["newer_cursor"] is not None
+
+    fresh_older_entries = _continue_history(
+        diary_api,
+        owner_access_token,
+        direction="older",
+        cursor=cast(str | None, fresh["older_cursor"]),
+        limit=2,
+    )
+    fresh_newer_entries = _continue_history(
+        diary_api,
+        owner_access_token,
+        direction="newer",
+        cursor=cast(str | None, fresh["newer_cursor"]),
+        limit=2,
+    )
+    assert fresh_older_entries
+    assert fresh_newer_entries
+    fresh_traversal = (
+        fresh_older_entries + _history_entries(fresh) + fresh_newer_entries
+    )
+    fresh_ids = [str(entry["id"]) for entry in fresh_traversal]
+    assert set(fresh_ids) == expected_old_ids | {str(distant["id"])}
+    assert len(fresh_ids) == len(set(fresh_ids))
+    assert str(distant["id"]) in {
+        str(entry["id"]) for entry in fresh_older_entries
+    }
 
 
 def test_trash_operations_are_non_disclosing_and_rls_enforced(
