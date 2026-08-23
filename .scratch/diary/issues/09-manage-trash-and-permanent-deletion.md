@@ -143,3 +143,178 @@
 - This correction remains Ticket 09 implementation work. Ticket 10 has not
   started, Ticket 09 has not been marked review-Passed, and no code-review or
   push was performed as part of the correction.
+
+### 2026-08-23 - Fresh independent complete fixed-range review requires changes
+
+#### Fixed review ranges
+
+- Diary Base: `869caaa1a0eb36e8489417c9f963abfbcc2f4df7`.
+- Diary Head: `aa1c38cca425c275c02c154c312e99cfbfd4c803`.
+- Personal Website Base: `6a8507f59c9470b6cd8c1a67ae13609d00cddb09`.
+- Personal Website Head: `e2bfbfab12bf1a958f33514cd7357cc44087bf30`.
+- Both merge bases equal the specified Bases, both fixed-range diffs were
+  non-empty, and both worktrees were clean before and after the review.
+
+#### Standards review - Passed
+
+- No documented-standard violation, secret exposure, production-content
+  logging, unrelated legacy-site change, or Ticket 10 scope creep was found.
+- Ticket 10, AI Draft, OpenRouter, direct search, RAG, and Agent implementation
+  remain unstarted. Both fixed ranges passed `git diff --check`.
+- One non-blocking Fowler judgement call remains: Personal Website
+  `src/diary/TrashView.tsx:19-25` duplicates the existing `formatTaipei`
+  formatter in `src/diary/EntryExperience.tsx:75-81`. This possible
+  Duplicated Code smell is not a documented-standard breach and does not
+  affect Ticket 09 correctness or security.
+
+#### Spec review - Changes Required
+
+- **High - blocking - restoring an Entry mixes new data into an old bounded
+  History snapshot.** Personal Website
+  `src/diary/EntryExperience.tsx:1370-1372` immediately merges every restored
+  Entry into the currently loaded `entries`, while retaining the existing
+  `anchorDate`, `olderCursor`, and `newerCursor`. If History is anchored around
+  one date with usable cursors and the owner restores a far-away Entry from
+  Trash, returning to History renders a date group that does not belong to the
+  bounded window and continues pagination through the old snapshot cursors.
+  This violates the bounded cursor History contract in
+  `.scratch/diary/spec.md:200,247` and regresses Ticket 08's explicit rule at
+  `.scratch/diary/issues/08-change-entry-time-and-regroup.md:228-231` that the
+  frontend never combines old snapshot cursors with new data.
+- The current browser regression at Personal Website
+  `tests/e2e/trash-management.spec.ts:55-180` uses an Entry on the same anchor
+  date and returns both cursors as `null`, so it does not exercise the defect.
+- Minimal correction scope: after a successful restore, do not merge the
+  restored Entry into the old History window. Invalidate or rebuild History
+  from a fresh bounded response and install its Entries and both cursors
+  atomically. Add one browser regression that restores an Entry far from the
+  current anchor while both old cursors are non-null, then proves the UI never
+  renders new data with those old cursors. No backend, database, Ticket 10, AI,
+  search, RAG, or Agent change is required for this finding.
+- All other Ticket 09 requirements reviewed correctly: Move to Trash and
+  permanent deletion are separate; active History, Calendar, Entry detail,
+  revision lookup, and Entry-centered History exclude Trash; the owner-only
+  listing carries current content, Entry Time/date, Trash time, and revision
+  count; restore preserves revision and processing rows and the original
+  Entry Time; no purge exists; browser, FastAPI, and PostgreSQL require exact
+  case-sensitive `PERMANENTLY DELETE`; invalid confirmation reaches no
+  destructive statement; one database `DELETE` cascades through `entries`,
+  `entry_revisions`, `ai_processing`, and the currently existing derived/index
+  table `entry_history_positions`; lookup and destructive operations are
+  non-disclosing; and FastAPI authorization plus forced RLS remain independent
+  defenses. Future AI, citation, search, and retrieval tables do not yet exist,
+  so their Trash and cascade rules remain future invariants rather than Ticket
+  09 implementation scope.
+- `scripts/run-playwright.mjs` overrides `VITE_DIARY_API_URL=/diary-api` only
+  inside the test-runner process. The production build still reads the GitHub
+  repository variable, and the Ticket 09 browser mocks do not call a hosted or
+  production Diary API. Diary CI pins the reviewed Website Head exactly:
+  `e2bfbfab12bf1a958f33514cd7357cc44087bf30`.
+
+#### Fresh local verification
+
+- Personal Website `npm.cmd run typecheck`: passed.
+- Personal Website `npm.cmd run test:e2e`: `47 passed` with four workers and
+  zero retries in `22.3s`. Existing negative/recovery cases emitted local
+  `127.0.0.1:8000 ECONNREFUSED` proxy diagnostics; the Ticket 09 Trash mocks
+  matched and no hosted Diary API was contacted.
+- Personal Website `npm.cmd run build`: passed with 78 modules transformed.
+- Personal Website `npm.cmd run verify:build`: passed.
+- Diary `python -m mypy src tests`: passed with no issues in 22 source files.
+- Diary `python -m pytest -q --tb=short`: after an initial sandbox-only Docker
+  named-pipe setup failure, the identical command ran with Docker access and
+  passed `94 passed`, with one existing Starlette/httpx deprecation warning,
+  in `365.41s`.
+- Supabase `db lint --local --level warning`: passed with `No schema errors
+  found`. The temporary local Supabase stack was stopped after lint.
+
+#### Exact-SHA GitHub Actions
+
+- Personal Website Head `e2bfbfab12bf1a958f33514cd7357cc44087bf30`:
+  `Website checks and Pages` pull-request run
+  [32590938026](https://github.com/oscar940327/my-personal-website/actions/runs/32590938026)
+  completed successfully. Type-check, browser journeys, build, and build
+  verification all succeeded; the PR-only deploy job was correctly skipped.
+- Diary Head `aa1c38cca425c275c02c154c312e99cfbfd4c803`:
+  `Backend checks` push run
+  [32591185370](https://github.com/oscar940327/diary/actions/runs/32591185370)
+  and pull-request run
+  [32591325227](https://github.com/oscar940327/diary/actions/runs/32591325227)
+  both completed successfully. Each checkout, type-check, and complete test
+  step succeeded, including checkout of the exact reviewed Website Head.
+
+#### Verdict
+
+- Standards: Passed with zero hard findings and one non-blocking smell.
+- Spec: Changes Required with one High blocking finding.
+- **Ticket 09 review Changes Required.** Ticket 09 is not ready for document
+  closeout or PR merge. Apply only the minimal frontend History invalidation or
+  fresh-window correction and its far-date/non-null-cursor browser regression,
+  then run a new independent complete fixed-range review. Do not start Ticket
+  10 while Ticket 09 remains review-blocked.
+
+### 2026-08-23 - Blocking History snapshot restore correction
+
+#### Finding fix and scope
+
+- Fixed the review's only High blocking finding in Personal Website. A
+  successful Trash restore no longer merges the restored Entry into the
+  currently loaded bounded History window.
+- Restore now retires old History request ownership and fully invalidates the
+  loaded Entries, anchor, both cursors, adjacent state, and recovery state
+  before requesting a fresh bounded response for the selected History anchor.
+  The fresh response installs its Entries, anchor, `older_cursor`, and
+  `newer_cursor` together through the existing root History refresh path.
+- The Restore success message remains visible in Trash. Existing browser and
+  system coverage continues to prove revision preservation and the restored
+  Entry's correct `Asia/Taipei` owner date.
+- No backend, migration, RLS, API-contract, permanent-deletion, or database
+  code changed. The non-blocking `formatTaipei` duplication was deliberately
+  left unchanged.
+
+#### TDD red and green evidence
+
+- Added a browser regression with History anchored on `2050-04-05`, a restored
+  Entry on distant date `2040-01-02`, and both old History cursors non-null. It
+  pauses the restore-triggered fresh response and proves that the old Entry,
+  distant restored Entry, and old pagination controls are absent during full
+  invalidation. After releasing the response, it proves that only the fresh
+  bounded Entries render and that newer and older pagination send
+  `fresh-newer-cursor` and `fresh-older-cursor` respectively.
+- Red command:
+  `npm.cmd run test:e2e -- tests/e2e/trash-management.spec.ts --grep "restoring a distant Entry" --workers=1 --retries=0`.
+  Before the source fix it failed at the expected invariant assertion because
+  `Loading Diary history…` never appeared after returning from Trash; the old
+  History snapshot remained installed. Result: `1 failed` in `5.7s` for the
+  test body.
+- Green with the identical command: `1 passed (1.8s)`, one worker, zero
+  retries. The complete focused Trash browser file also passed: `3 passed
+  (3.0s)`, one worker, zero retries.
+
+#### Complete verification and implementation endpoints
+
+- Personal Website `npm.cmd run typecheck`: passed.
+- Personal Website `npm.cmd run test:e2e`: `48 passed (18.7s)`, four workers,
+  zero retries. Existing negative/recovery cases emitted only their expected
+  local `127.0.0.1:8000 ECONNREFUSED` proxy diagnostics.
+- Personal Website `npm.cmd run build`: passed with 78 modules transformed.
+- Personal Website `npm.cmd run verify:build`: passed with GitHub Pages output
+  verified.
+- Personal Website implementation commit:
+  `b15316f814b516622d85c315c7769557d0f11edb`. Diary CI pins this exact SHA.
+- Diary `python -m mypy src tests`: passed with no issues in 22 source files.
+- The first Diary `python -m pytest -q --tb=short` attempt encountered only a
+  stopped-Docker/local-Supabase fixture setup blocker (`20 passed, 74 setup
+  errors`) and did not reach the affected system assertions. After Docker was
+  started, the identical complete command passed against real local
+  Supabase/PostgreSQL/PostgREST/FastAPI/Uvicorn/frontend/Chromium seams: `94
+  passed`, one existing Starlette/httpx deprecation warning, in `377.14s`.
+- The first exact Supabase lint command could not connect after pytest teardown
+  stopped the fixture stack. After starting the same minimal temporary local
+  stack, the identical
+  `npm.cmd run supabase -- db lint --local --level warning` passed with
+  `No schema errors found`; the temporary stack was then stopped.
+- The Diary implementation endpoint is the commit containing this appended
+  record and the exact Website CI pin. Ticket 10 remains unstarted, Ticket 09
+  remains `ready-for-agent` and review-blocked, and no code-review, push, merge,
+  release, or deployment was performed.
