@@ -540,3 +540,178 @@
   unstarted. Ticket 09 remains `ready-for-agent` and review-blocked; it was not
   marked review-Passed. No code-review, push, merge, release, or deployment was
   performed.
+
+### 2026-08-24 - New independent complete fixed-range review requires changes
+
+#### Fixed review ranges and method
+
+- Diary Base: `869caaa1a0eb36e8489417c9f963abfbcc2f4df7`.
+- Diary Head: `338ef6fde138ebd75397099874c2e85fe5b58c8f`.
+- Personal Website Base:
+  `6a8507f59c9470b6cd8c1a67ae13609d00cddb09`.
+- Personal Website Head:
+  `b15316f814b516622d85c315c7769557d0f11edb`.
+- Both Bases resolve, both merge bases exactly equal the specified Bases, both
+  Bases are ancestors of their specified Heads, and both complete fixed-range
+  diffs are non-empty. Both current repository Heads exactly matched the
+  requested Heads. Both worktrees were clean before review and before this
+  required Comments-only append.
+- This fresh review re-read every product, test, workflow, migration and
+  documentation hunk in both complete ranges. It was not limited to
+  `20260823120000_stabilize_trash_history_membership.sql` or the latest fix.
+  It reviewed `AGENTS.md`, `CONTEXT.md`, the complete Spec and Ticket 09,
+  `docs/agents/`, every ADR, the relevant Ticket 04 and Ticket 08 History
+  contracts, and both repositories' documented conventions.
+
+#### Standards review - Passed
+
+- No hard or blocking documented-standard violation was found. The complete
+  ranges remain confined to Ticket 09 Trash management, its regressions, the
+  Playwright test-environment isolation, and the prior finding corrections.
+- Both Ticket 09 migrations are additions in timestamp order. The range does
+  not rewrite any migration that existed at the fixed Diary Base. The latest
+  migration is transactional and installs its reconciliation and lifecycle
+  trigger under one Entry-write lock, consistent with the ordered migration,
+  expand-contract, and maintenance-window rules in `CONTEXT.md` and ADRs 0013
+  and 0016.
+- FastAPI owner authorization, caller-token PostgREST access, the singleton
+  owner registry, and forced PostgreSQL RLS remain independent defense layers.
+  No production personal-content logging, secret exposure, hosted-API test
+  bypass, unrelated legacy-site change, or production configuration mutation
+  was found.
+- Diary `.github/workflows/ci.yml` pins the exact reviewed Personal Website
+  Head `b15316f814b516622d85c315c7769557d0f11edb`.
+- Personal Website `scripts/run-playwright.mjs` sets
+  `VITE_DIARY_API_URL=/diary-api` only in the Playwright runner process. The
+  later production build still consumes the workflow's public production
+  configuration and is not changed by the test override.
+- Ticket 10, AI Draft, OpenRouter, direct search, RAG, and Agent implementation
+  remain unstarted.
+- One non-blocking Fowler judgement remains: Personal Website
+  `src/diary/TrashView.tsx:19-25` duplicates the existing `formatTaipei`
+  formatter in `src/diary/EntryExperience.tsx:75-81`. This possible
+  Duplicated Code smell is not a documented-standard breach and does not
+  affect Ticket 09 correctness or security.
+
+#### Spec review - Changes Required
+
+- **High - blocking - reconciliation can reintroduce a restored Entry into a
+  pre-migration snapshot created while that Entry was in Trash.**
+  `20260823120000_stabilize_trash_history_membership.sql:50-55` closes an
+  already-trashed Entry's pre-existing active History position using the
+  migration transaction's `pg_current_xact_id()`. For a History snapshot
+  captured before that migration, the old generation's `valid_from_xid` is
+  visible but the later migration XID is not. Consequently
+  `list_diary_history_v5` at
+  `20260804120000_change_entry_time_and_stabilize_history.sql:346-355` treats
+  that old generation as still valid for the old snapshot. After Restore
+  clears current `entries.trashed_at` at
+  `20260822120000_manage_diary_trash.sql:295-300`, the reconciled old
+  generation becomes eligible and the restored Entry can enter the old
+  traversal even though it was in Trash when that snapshot was created.
+- ADR 0016's maintenance window does not eliminate this sequence. It drains
+  in-flight requests and prevents writes while migrations execute, but an
+  opaque cursor contains a serialized PostgreSQL snapshot and can remain in a
+  browser across maintenance, then be submitted after traffic resumes. The
+  implementation has no migration epoch that rejects such a cursor.
+- The real regression at
+  `tests/system/test_trash_management.py:297-418` does not cover this upgrade
+  boundary. The full migration set is already installed before the test moves
+  its Entry to Trash and captures the snapshot, so the trigger closes the
+  generation at the actual Trash XID. It never exercises an Entry trashed
+  before migration, a pre-migration two-sided snapshot, migration
+  reconciliation, Restore, and continuation through both original cursors.
+- This violates requested checks 16-18, Ticket 04's acceptance rule that data
+  changes between cursor requests cannot duplicate or omit Entries, and
+  Ticket 08's requirement that one snapshot govern History membership and
+  both continuation cursors. It also prevents a Passed verdict even though
+  the ordinary post-migration Trash lifecycle is correct.
+- Minimal correction scope: add only one later ordered additive Diary
+  migration that closes reconciled pre-existing Trash membership at a
+  transaction boundary visible to snapshots created while the Entry was
+  already trashed, rather than at the later migration XID, or use an
+  equivalently safe explicit cursor-version invalidation contract. Add one
+  real migration-upgrade regression that installs through the first Ticket 09
+  migration, trashes a distant Entry, captures a bounded snapshot with both
+  cursors non-null, applies the later lifecycle migration(s), restores through
+  the public API, and completely follows both original cursors. It must prove
+  the Entry remains absent with no duplicates or omissions, while a fresh
+  bounded traversal includes it and both fresh cursors work. No Personal
+  Website, FastAPI contract, Ticket 10, AI, search, RAG, or Agent change is
+  required.
+- All other requested Ticket 09 behavior passed review. Move to Trash,
+  Restore, and permanent deletion are separate operations; active History,
+  Calendar, Entry detail, revision lookup, and Entry-centered History exclude
+  Trash; the owner-only Trash listing includes current content, Entry Time and
+  owner date, capture and Trash times, processing state, and revision count;
+  Restore preserves Entry Time, every Entry Revision, and processing records;
+  and no automatic purge exists.
+- Browser, FastAPI, and PostgreSQL independently require the exact,
+  case-sensitive `PERMANENTLY DELETE` value. Invalid or missing values reach
+  no destructive statement and cause no partial deletion. The Entry foreign
+  key cascade removes all Entry Revisions, processing rows, and every History
+  position generation. Foreign-owner, wrong-state, and nonexistent resources
+  remain non-disclosing through both FastAPI and direct caller-token RLS paths.
+- For Trash and Restore performed after the lifecycle trigger exists, Move to
+  Trash closes the active generation at the same transaction XID, Restore
+  opens a new generation at the same transaction XID and byte-identical Entry
+  Time, and the separate `trashed_at` and `entry_at` triggers do not duplicate
+  or miss generations in the supported RPC paths.
+- Personal Website Restore correctly retires old request ownership, clears
+  Entries, anchor, both cursors, adjacent state and recovery state, and then
+  atomically installs a fresh bounded response with its Entries, anchor and
+  both fresh cursors. Its distant-date/non-null-cursor browser regression
+  passes. Ticket 04 and Ticket 08's ordinary current-schema cursor, pagination
+  anchor, viewport ownership, and Entry-centered History regressions also
+  pass.
+
+#### Fresh complete local verification
+
+- Personal Website `npm.cmd run typecheck`: passed.
+- Personal Website `npm.cmd run test:e2e`: passed `48 passed (21.9s)`, four
+  workers and zero retries. Existing negative/recovery cases emitted only
+  expected local `127.0.0.1:8000 ECONNREFUSED` proxy diagnostics.
+- Personal Website `npm.cmd run build`: passed with 78 modules transformed in
+  `3.36s`; only existing classic-script notices and the build timing notice
+  were emitted.
+- Personal Website `npm.cmd run verify:build`: passed and verified the GitHub
+  Pages output.
+- Personal Website `git diff --check`: passed.
+- Diary `python -m mypy src tests`: passed with no issues in 22 source files.
+- The first sandboxed Diary `python -m pytest -q --tb=short` attempt could not
+  start local Supabase through the Docker named pipe and ended `20 passed, 75
+  setup errors` in `22.14s`; the affected system assertions did not run. The
+  identical complete command with Docker access then passed `95 passed`, with
+  one existing Starlette/httpx deprecation warning, in `374.91s`.
+- Diary `npm.cmd run supabase -- db lint --local --level warning`: passed with
+  `No schema errors found`. The temporary local Supabase stack was stopped
+  afterward with its local data backed up.
+- Diary `git diff --check`: passed.
+
+#### Exact-SHA GitHub Actions
+
+- Personal Website Head `b15316f814b516622d85c315c7769557d0f11edb`:
+  `Website checks and Pages` pull-request run
+  [32620331811](https://github.com/oscar940327/my-personal-website/actions/runs/32620331811)
+  completed `success`. Its checkout, dependency and browser installation,
+  type-check, browser journeys, production build, and build verification steps
+  all succeeded. PR-only Pages configuration, upload, and deploy were
+  correctly skipped.
+- Diary Head `338ef6fde138ebd75397099874c2e85fe5b58c8f`:
+  `Backend checks` pull-request run
+  [32638172426](https://github.com/oscar940327/diary/actions/runs/32638172426)
+  completed `success`. Its exact Diary checkout, exact reviewed Website
+  checkout, dependency and browser installation, type-check, and complete test
+  steps all succeeded.
+
+#### Verdict
+
+- Standards: Passed with zero blocking/hard findings and one non-blocking
+  Duplicated Code judgement.
+- Spec: Changes Required with one High blocking migration-reconciliation
+  History membership finding.
+- **Ticket 09 review Changes Required.** Ticket 09 is not ready for document
+  closeout or PR merge. Apply only the later additive membership-reconciliation
+  correction and the real pre-migration/two-cursor upgrade regression above,
+  then run another new independent complete fixed-range review. Do not start
+  Ticket 10 while Ticket 09 remains review-blocked.
