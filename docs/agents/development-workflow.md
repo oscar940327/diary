@@ -4,16 +4,17 @@ Diary uses the following Skill workflow. Do not skip directly from discussion to
 
 ## Active rebuild
 
-The active work on `main` is Diary v2, governed by ADR 0018 and planning files
+The active work on `main` is Diary v2, governed by `docs/tech-stack.md` and planning files
 under `.scratch/diary-v2/`. Its current specification is a `needs-info` draft;
 the technology decision does not mean that all product behavior is settled.
 Proceed through clarification, specification, tickets, and one-ticket TDD in
 that order. Do not start implementation until the selected v2 ticket is ready.
 
 The `v1` branch preserves the old implementation. `.scratch/diary/` and its
-Ticket 09 review state are legacy records, not the v2 work queue. Existing
-Python/Supabase code and CI remain available during the documentation reset;
-replacing them belongs to an explicit v2 implementation ticket.
+Ticket 09 review state are legacy records, not the v2 work queue. At the
+owner's explicit request, the old application, tests, package configuration,
+and CI have been removed from `main` to start with a clean environment.
+New product implementation still follows the staged workflow below.
 
 | Step | Skill or phase | Purpose | Completion condition |
 | --- | --- | --- | --- |

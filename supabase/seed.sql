@@ -1,2 +1,0 @@
--- Ticket 02 provisions test users through the local Auth admin API.
--- Production owner provisioning is an explicit operator action.

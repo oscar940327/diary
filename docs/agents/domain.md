@@ -2,7 +2,7 @@
 
 Before exploring the codebase, read `CONTEXT.md` and any relevant ADRs under `docs/adr/`.
 
-On `main`, ADR 0018 defines the v2 rebuild. `CONTEXT.md` is the domain glossary;
+On `main`, read `docs/tech-stack.md` for the current v2 decisions. `CONTEXT.md` is the domain glossary;
 current scope belongs in `DISCUSSION.md` and `.scratch/diary-v2/spec.md`.
 ADRs 0001-0017 and `docs/archive/v1/` describe v1. Read them as historical
 design evidence, not as automatic requirements for v2.

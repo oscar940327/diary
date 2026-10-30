@@ -2,7 +2,7 @@
 
 ### Active version
 
-`main` is the Diary v2 rebuild: a Discord command bot using TypeScript, Hono, Cloudflare Workers, and D1. Start with `DISCUSSION.md` and ADR 0018. The `v1` branch preserves the previous implementation; `.scratch/diary/`, ADRs 0001-0017, and the existing Python/Supabase code describe that legacy version. The active planning directory is `.scratch/diary-v2/`; do not continue legacy Ticket 09 as v2 work.
+`main` is the Diary v2 rebuild. Start with the plain-language decisions in `docs/tech-stack.md` and the current summary in `DISCUSSION.md`. The old application, tests, dependency files, and CI have been removed from `main`; the `v1` branch preserves them. `.scratch/diary/` and ADRs 0001-0017 are historical records. The active planning directory is `.scratch/diary-v2/`; do not continue legacy Ticket 09 as v2 work.
 
 ### Issue tracker
 
@@ -20,7 +20,7 @@ This is a single-context repository. See `docs/agents/domain.md`.
 
 `DISCUSSION.md` is a short current-state summary and index, kept to about 80 lines or fewer. Update its current decisions, open questions, and next step when they change; do not append the full conversation history there.
 
-Before ending each Diary planning conversation, append a short, dated summary to the current monthly file under `docs/discussions/`, even if no decision was made. Follow `docs/discussions/README.md`; start a new monthly file or numbered part rather than letting one file grow indefinitely. Write in plain language, not as a transcript or implementation guide, and separate confirmed decisions from ideas still being discussed. Preserve historical summaries; newer decisions belong in the current summary and, when appropriate, an ADR. Detailed behavior belongs in the spec and tickets.
+Before ending each Diary planning conversation, append a short, dated summary to the current monthly file under `docs/discussions/`, even if no decision was made. Follow `docs/discussions/README.md`; start a new monthly file or numbered part rather than letting one file grow indefinitely. Write in plain language, not as a transcript or implementation guide, and separate confirmed decisions from ideas still being discussed. Preserve historical summaries. Keep the current technology choices in `docs/tech-stack.md`, written in simple, plain language; link to it instead of duplicating the full decision in other files. Detailed behavior belongs in the spec and tickets.
 
 ### Development workflow
 

@@ -1,7 +1,7 @@
 # Diary 目前方向
 
 更新日期：2026-10-30。這份文件只放現況，不累積完整對話。
-[歷史討論與記錄方式](docs/discussions/README.md)｜[新版架構決策](docs/adr/0018-rebuild-as-a-discord-command-bot-on-workers.md)｜[新版規格草稿](.scratch/diary-v2/spec.md)
+[這次的技術選擇](docs/tech-stack.md)｜[歷史討論與記錄方式](docs/discussions/README.md)｜[新版規格草稿](.scratch/diary-v2/spec.md)
 
 ## 已確認
 
@@ -15,10 +15,10 @@
 
 ## 分支與實作現況
 
-- `v1` 已提交保存重建前的程式、文件與討論，保存點是 `899f5d4`。
-- 目前位於 `main`，從 v1 保存點開始整理新版文件。
+- `v1` 保存清理前的完整版本，最新保存點是 `a47b662`。
+- 目前位於 `main`，從乾淨的程式環境重新開始。
 - 原 `origin/ticket-09-trash-management` 另留，沒有合併。
-- 既有 Python、Supabase 程式與 CI 暫留作參考，尚未替換成新版 Bot。
+- 舊版 Python 後端、測試、Supabase、CI 與套件設定已從 `main` 移除。
 - 新版規劃在 `.scratch/diary-v2/`；舊 `.scratch/diary/` 是 v1 紀錄。
 - 尚未建立正式 Workers／D1 資源，尚未部署新版。這次提交先保存於本機。
 
@@ -39,4 +39,4 @@
 
 - 本文件維持約 80 行以內，只更新目前決定、未決問題與下一步。
 - 每次討論摘要寫入 `docs/discussions/YYYY-MM.md`，歷史較長時再分冊。
-- 正式架構放 ADR；功能細節放規格與 Tickets，討論紀錄保留結論和連結。
+- 技術選擇集中寫在白話的 `docs/tech-stack.md`；功能細節放規格與 Tickets。
