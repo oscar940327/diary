@@ -2,6 +2,19 @@
 
 Diary uses the following Skill workflow. Do not skip directly from discussion to implementation, and do not combine multiple implementation tickets in one pass.
 
+## Active rebuild
+
+The active work on `main` is Diary v2, governed by ADR 0018 and planning files
+under `.scratch/diary-v2/`. Its current specification is a `needs-info` draft;
+the technology decision does not mean that all product behavior is settled.
+Proceed through clarification, specification, tickets, and one-ticket TDD in
+that order. Do not start implementation until the selected v2 ticket is ready.
+
+The `v1` branch preserves the old implementation. `.scratch/diary/` and its
+Ticket 09 review state are legacy records, not the v2 work queue. Existing
+Python/Supabase code and CI remain available during the documentation reset;
+replacing them belongs to an explicit v2 implementation ticket.
+
 | Step | Skill or phase | Purpose | Completion condition |
 | --- | --- | --- | --- |
 | 1 | `setup-matt-pocock-skills` | Initialize the project documents, Issue Tracker, and documentation locations used by this Skill set. | Project setup is complete and Codex knows where documents and tickets belong. |

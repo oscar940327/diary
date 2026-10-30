@@ -1,5 +1,9 @@
 # Diary MVP
 
+> Legacy v1 specification. Preserved as historical evidence; this is not the
+> active specification for the rebuild on `main`. See ADR 0018 and
+> [the v2 planning draft](../diary-v2/spec.md). The status below records v1 only.
+
 Status: ready-for-agent
 
 ## Problem Statement

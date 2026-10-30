@@ -1,107 +1,42 @@
-# Diary 討論紀錄
+# Diary 目前方向
 
-這份文件用白話記下我們談好的方向、還沒決定的問題，以及下一步。它不是逐字對話紀錄，也不代替正式規格、Ticket 或 ADR。實作細節由後續 Agent 查看 repository。
+更新日期：2026-10-30。這份文件只放現況，不累積完整對話。
+[歷史討論與記錄方式](docs/discussions/README.md)｜[新版架構決策](docs/adr/0018-rebuild-as-a-discord-command-bot-on-workers.md)｜[新版規格草稿](.scratch/diary-v2/spec.md)
 
 ## 已確認
 
-- 2026-10-27：接下來討論 Diary 時，若確認新方向、改變決定或提出重要未決問題，就同步更新這份 Markdown 文件。
-- 紀錄保持簡短、易懂；清楚區分「已確認」和「討論中」。
-- 使用者想重新檢視整個 Diary 專案。這表示現有 MVP 範圍與做法需要重新討論，尚未表示任何既有功能或文件已被取消。
-- 使用者願意考慮從頭重建，希望重新掌握專案，並用規格驅動開發（SDD）；新版功能範圍仍待釐清。
-- Diary 要能用手機和電腦隨手記錄生活瑣事，也能滑動閱讀過往內容、查閱某一天的紀錄。
-- note-garden 主要放可以公開的筆記與知識庫；Diary 承載私人生活紀錄，兩邊的展示內容需要分清楚。
-- Agent 是使用者想要的方向，包括根據過往紀錄協助面試準備、提醒待辦，以及探索心情預測；尚未決定哪些進入第一版。
-- 使用者希望不花錢，且已表示其他專案正在使用 Supabase，新版不要以 Supabase 為前提。
-- 2026-10-30：重新討論開發語言；先前提出的 TypeScript／Hono 並未定案。
-- 使用者沒有特別熟悉的語言，希望以社群普及、教學與範例容易取得作為選擇依據。
-- 使用者補充：框架選擇要考慮未來擴充性；沒有聽過 Hono 不表示排斥使用它。
-- 使用者提出將舊版保留在 `v1`，後續在 `main` 重建的安排；新版技術組合與實作範圍仍待確認。
-- 2026-10-30：第一版先做 Discord 指令式 Bot，現階段不做獨立網頁，希望減少開發與部署的負擔。
+- 在 `main` 重建 Diary，採用 TypeScript、Hono、Cloudflare Workers 與 D1。
+- 第一版是 Discord 指令式 Bot，現階段不製作獨立網頁。
+- 手機與電腦都能記錄生活瑣事、滑動閱讀過往內容，也能按日期查閱。
+- 希望零付費運作，不使用 Supabase，不自動改用付費方案。
+- Diary 保存私人紀錄；note-garden 展示可公開的筆記與知識。
+- 考慮未來 Agent、提醒與網頁入口的擴充性，核心日記邏輯不綁定 Discord。
+- 採規格驅動開發：釐清範圍、寫規格、拆票、逐票 TDD 與獨立審查。
 
-## 目前的討論起點
+## 分支與實作現況
 
-- 目前檢出的 `main` 分支文件記載 Ticket 08 已完成，Ticket 09 是下一張 Ticket。這只是此工作目錄的狀態；其他分支或尚未推送的工作需另行核對。
-- 先前文件曾記載為 Diary 使用第二個獨立的 Supabase 專案，但是否已建立尚未確認。後續對話中使用者已提出新版不使用 Supabase；舊規格仍保留原方案，需要在新版方向確認後同步調整。
-- 先前從 Angular／Node.js、NestJS、Elysia，一路討論到用 Discord 當現成介面，以及 TypeScript／Hono、Cloudflare Workers／D1 的建議。這些是評估過的選項，不是已確認的新版架構。
-- 2026-10-30 已建立本機 `v1`，指向舊版 `main` 的已提交版本 `36c62ae`；仍留在 `main` 討論新版，尚未推送 `v1`。尚未提交的新討論留在工作目錄，未包含在 `v1` 中。原有 `origin/ticket-09-trash-management` 另行保留，未合併進 `v1` 或 `main`。
+- `v1` 已提交保存重建前的程式、文件與討論，保存點是 `899f5d4`。
+- 目前位於 `main`，從 v1 保存點開始整理新版文件。
+- 原 `origin/ticket-09-trash-management` 另留，沒有合併。
+- 既有 Python、Supabase 程式與 CI 暫留作參考，尚未替換成新版 Bot。
+- 新版規劃在 `.scratch/diary-v2/`；舊 `.scratch/diary/` 是 v1 紀錄。
+- 尚未建立正式 Workers／D1 資源，尚未部署新版。這次提交先保存於本機。
 
-## 還沒決定
+## 尚待決定
 
-- 第一個真正上線、每天能用的版本，是否一定要包含 AI Draft 和 Insight Agent？
-- 現有的 MVP 範圍、技術安排與 Ticket 流程，哪些要保留、簡化或延後？
-- 開發語言與框架怎麼選？以社群普及為起點，如何兼顧學習、長期維護與免費部署？
-- Discord 已選為第一版主要介面，採用指令操作；記錄、按日查詢、連續閱讀的具體行為及指令清單仍待寫入新版規格。
-- 免費部署、資料庫和 AI 服務如何安排？免費額度不足時怎麼處理，私人紀錄能接受哪些服務的資料處理方式？
-- 哪個框架最符合現在與未來的需求？使用者願意評估 Hono，需比較指令式 Bot、免費部署、Agent、提醒及可能新增網頁入口的擴充方式。
-- Diary 是否維持獨立 repo？使用者傾向舊版留在 `v1`、新版在 `main`；Ticket 09 的後續處理尚未決定。
-- 舊版的原文版本、補寫日期、避免重複保存、AI 不阻塞記錄和來源引用等規則，哪些納入新版第一個可用版本？
+- 第一版必備指令，以及修改、版本歷史、刪除／還原、匯出與備份的範圍。
+- 補寫日期、時區、長文與大量查詢結果的操作方式。
+- Agent 是否隨首版上線；免費模型的額度、品質與私人資料處理條件。
+- 是否已有私人紀錄需要遷移，以及遷移與還原的驗收方式。
 
 ## 下一步
 
-以已確認的 Discord 指令式 Bot、先不做網頁、零付費及不使用 Supabase 為前提，接下來確認新版技術組合與第一版指令範圍，再整理新版規格、決策和 Tickets。舊版 `CONTEXT.md`、規格與 ADR 仍描述網站方案，重建時需要明確區分適用版本。討論中的技術建議不直接當成已確認決策。
+以 Discord 記錄、私人頻道閱讀和 `/day` 查詢為第一條候選流程，
+完成新版規格，再拆成可獨立驗收的 Tickets。詳細行為尚未確認，
+不能直接沿用 v1 的整份 MVP 或接著實作舊 Ticket 09。
 
-## 討論摘要
+## 討論文件如何維持精簡
 
-### 2026-10-27
-
-使用者希望往後的 Diary 討論都有 Markdown 紀錄，文字要白話、簡短、容易懂。後續 Agent 需要實作細節時，應自行查看 repository。這次先建立紀錄方式；產品範圍尚未重新決定。
-
-### 2026-10-28
-
-本次提供 `AGENTS.md` 與 `DISCUSSION.md` 一起提交的指令，保存討論紀錄的約定。尚未代替使用者執行 commit；專案重整的功能範圍仍待討論。
-
-### 2026-10-30（補記先前對話，並重新討論語言）
-
-已確認的需求：使用者希望重新掌握 Diary，願意考慮重建並使用 SDD。日記要能在手機和電腦記錄、滑動回顧與按日期查閱；未來希望 Agent 能利用私人紀錄提供協助。note-garden 放公開筆記，Diary 放私人紀錄。使用者希望零付費，並提出新版不使用 Supabase。
-
-討論中的方案：Discord 可以提供現成介面；先前建議用私人日記頻道連續閱讀，再以 `/day` 查詢日期，搭配另一個助理對話入口。TypeScript／Hono、Workers／D1 是先前建議，Angular、NestJS、Elysia 也曾討論；使用者現在希望重新比較語言，尚未選定新版技術。Agent 首版範圍、免費 AI 的限制、repo 安排及分支封存方式也仍待決定。
-
-舊版可參考的成果：原文與 AI 內容分開、修改保留版本、日記日期與建立時間分開、重複提交只保存一次，以及回答可追溯來源。這些是保留建議，並不表示新版必須一次實作。現有 Python／PostgreSQL 程式與測試可作為參考；AI 與 Agent 主要仍是規格，沒有完成實作。
-
-本次重新核對官方文件：Cloudflare Workers 也支援 Python／FastAPI，因此不能把免費部署直接視為必須換成 TypeScript；Python 套件仍需確認 Workers 的相容性。參考：[Python Workers](https://developers.cloudflare.com/workers/languages/python/)、[套件支援](https://developers.cloudflare.com/workers/languages/python/packages/)。接下來先了解使用者最熟悉的語言與對先前建議的疑慮，再決定比較方向。
-
-此次只補上討論紀錄；既有 `CONTEXT.md`、規格與 ADR 尚未依新版改寫，現有架構與新需求之間的差異仍待正式整理。
-
-### 2026-10-30（以社群普及度重新比較）
-
-已確認：使用者沒有特別熟悉的語言，希望知道 Discord 日記 Bot 常見的開發選擇。
-
-本次建議：優先考慮 JavaScript／TypeScript 生態，新專案用 TypeScript。一般常駐 Discord Bot 的主流路線之一是 Node.js 搭配 discord.js；discord.js 是處理 Discord 功能的套件，Hono 則是處理 HTTP 請求的 Web 框架，兩者用途不同。參考：[discord.js](https://discord.js.org/)、[Discord 社群套件清單](https://docs.discord.com/developers/developer-tools/community-resources)。
-
-仍在討論：常駐 Bot 的部署要另外安排；若維持先前以免費 Workers 接收斜線指令的方案，則可使用 TypeScript／Hono 配合 Discord HTTP Interactions，不直接搬用需要長時間 Gateway 連線的程式。參考：[Discord 的 Workers 教學](https://docs.discord.com/developers/tutorials/hosting-on-cloudflare-workers)。TypeScript、discord.js、Hono 與部署方式都尚未經使用者選定。
-
-### 2026-10-30（語言、套件、部署與舊版保存）
-
-使用者詢問 TypeScript 和 discord.js 的關係、免費部署如何安排，以及舊版有哪些成果值得保留；並提出舊版放在 `v1`、後續在 `main` 重建。
-
-本次說明與建議：TypeScript 是語言，discord.js 是可供 JavaScript／TypeScript 使用的 Node.js 套件。主流的常駐 Bot 寫法與免費 Workers 的 HTTP 指令方案需要分開評估，不能因為選 TypeScript 就直接認定必須採用 discord.js 常駐 Client。零付費仍是使用者已提出的限制，因此建議優先確認 TypeScript／Hono／Workers／D1 的指令式方案；discord.js 的選用尚未定案。常駐 Bot 可在自己的電腦執行，但依賴電腦持續開機和連網，不等同於取得免費雲端常駐主機。
-
-舊版可保留的內容：原文保存與版本、補寫日期、避免重複保存、AI 來源引用等規則，測試中發現的邊界情境，以及討論與開發流程。Python／PostgreSQL 的實作可以留作參考，不要求直接移植。
-
-已完成的保存：建立本機 `v1` 指向 `36c62ae`，保存舊版已提交的程式與文件；Ticket 09 原分支另留，未合併。`main` 目前只持續補討論紀錄，尚未移除舊程式或實作新版。依現有開發流程，接下來先釐清新版範圍、更新規格與決策，再逐張 Ticket 實作。
-
-### 2026-10-30（確認先做 Discord 指令式 Bot）
-
-已確認：第一版透過 Discord 指令使用，現階段不做獨立網頁，目的是減少開發與部署負擔。這項新版方向不同於舊規格的個人網站整合，但尚未改寫或刪除舊規格與程式。
-
-本次建議：使用 TypeScript／Hono，在 Cloudflare Workers 接收 Discord HTTP 指令，資料存 Cloudflare D1。Hono 在這裡只處理 Bot 後端請求，不需要另外製作網頁；仍要部署後端並設定 Discord 的指令入口。使用這種方案不必啟動常駐的 discord.js Client。框架、資料庫與雲端平台仍是建議，並非使用者已逐項確認。
-
-待整理的第一條使用流程：透過記錄指令輸入文字，先保存至資料庫，再顯示到私人日記頻道供滑動閱讀；透過 `/day` 查詢某一天。`/record` 名稱、輸入表單及其他指令都是待確認設計。Agent 的 `/ask` 可在相同架構上擴充，首版是否包含仍未決定。Bot 與資料庫以免費額度為目標，AI 服務的額度與費用需另行評估。
-
-### 2026-10-30（確認 Hono 並非必要）
-
-使用者因為沒有接觸過 Hono，詢問是否一定需要使用它。這是對框架必要性的疑問，尚未表示正式排除 Hono 或選定其他框架。
-
-本次說明：Hono 主要協助整理 HTTP 路由與共用處理。Workers 本身就能接收 HTTP 請求，少量 Discord 指令可以共用一個入口，再分派到各自的處理程式，因此也能不採用 Web 框架。這種方式仍須處理 Discord 請求驗證、帳號限制與錯誤回覆；可使用 Discord 提供的互動輔助套件，無須自行設計簽章演算法。參考：[Workers 原生請求入口](https://developers.cloudflare.com/workers/runtime-apis/handlers/fetch/)、[Discord 互動輔助套件](https://github.com/discord/discord-interactions-js)。
-
-候選建議調整：若以目前少量指令的規模出發，可以先用 TypeScript／Workers 原生入口／D1，不先加入 Hono。若希望使用較熟悉、教學常見的框架，Express 也是可評估選項，Cloudflare 有官方部署教學。框架與無框架方案都尚未由使用者定案，免費部署方向不需要因為不使用 Hono 而放棄。參考：[Express 部署教學](https://developers.cloudflare.com/workers/tutorials/deploy-an-express-app/)。
-
-### 2026-10-30（依擴充性比較框架）
-
-已確認：使用者只是沒有聽過 Hono，並非排斥；希望比較候選框架並選出最適合專案的方案，且必須考慮未來擴充性。上一輪的無框架建議不代表使用者的選擇。
-
-本次比較與建議：以第一版 Discord 指令 Bot、免費 Workers 部署、未來新增 Agent、提醒及可能的網頁入口為條件，仍優先推薦 TypeScript／Hono。Express 可用且有 Workers 官方教學；Elysia 的 Workers 整合目前仍標示為實驗性；NestJS 有較完整的模組與依賴管理，但以目前單人專案與部署目標，尚不足以抵銷增加的框架概念與部署評估。這是本次取捨判斷，不是宣稱其他框架無法擴充。參考：[Hono Workers](https://hono.dev/docs/getting-started/cloudflare-workers)、[Express Workers](https://developers.cloudflare.com/workers/tutorials/deploy-an-express-app/)、[Elysia Workers](https://elysiajs.com/integrations/cloudflare-worker)、[NestJS Modules](https://docs.nestjs.com/modules)。
-
-擴充設計方向：Discord 輸入與回覆、日記規則、Agent 檢索與回答、資料存取分別整理成職責清楚的 Modules。核心日記邏輯不依賴 Discord 訊息格式或 Hono 的請求物件，讓未來網頁或排程入口可以沿用。提醒與耗時 AI 工作另外設計持久化背景處理；Hono 不會自動提供這些能力。先做需要的功能與測試，不先建立假想平台的完整抽象。
-
-仍未定案：使用者尚未確認採用 Hono。Hono 可透過 Adapter 跑在 Node.js，但未來若離開 Workers，D1 與背景工作的搬遷仍需安排；免費方案也不代表所有未來 AI、搜尋與儲存需求都能維持零費用。參考：[Hono Node.js](https://hono.dev/docs/getting-started/nodejs)。
+- 本文件維持約 80 行以內，只更新目前決定、未決問題與下一步。
+- 每次討論摘要寫入 `docs/discussions/YYYY-MM.md`，歷史較長時再分冊。
+- 正式架構放 ADR；功能細節放規格與 Tickets，討論紀錄保留結論和連結。
