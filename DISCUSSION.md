@@ -23,7 +23,7 @@
 
 - `v1` 保存清理前的完整版本，最新保存點是 `a47b662`。
 - 目前位於 `change/bootstrap-discord-bot`；本機及遠端 `main` 仍在實作前的 `116c9d8`，實作保存在 change 分支。
-- 原 `origin/ticket-09-trash-management` 另留，沒有合併。
+- Ticket 09 的遠端分支與本機遠端追蹤參照已依使用者要求刪除，沒有合併；最後版本為 `aca739e`，舊 PR #1 已關閉。
 - 舊版 Python 後端、測試、Supabase、CI 與套件設定已從 `main` 移除。
 - OpenSpec 已初始化；`bootstrap-discord-bot` 已補齊 proposal、specs、design 與 tasks，其他七個 change 維持 metadata 與 proposal 大綱。
 - `bootstrap-discord-bot` Stage 1–2 已完成，進度 4/21 tasks；44 個本機 Workers 測試、typecheck 與本機打包 dry run 通過。
