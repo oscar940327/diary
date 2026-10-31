@@ -42,7 +42,7 @@
 
 ## 下一步
 
-Stage 1–2 已完成，使用 `change/bootstrap-discord-bot` 的 draft PR 供檢查。下一步先在新 session 用 `code-review` 審查，處理必要修正後才進 Stage 3。
+Stage 1–2 已完成，已提出 [Draft PR #2](https://github.com/oscar940327/diary/pull/2)，分支為 `change/bootstrap-discord-bot`。下一步先在新 session 用 `code-review` 審查，處理必要修正後才進 Stage 3。
 比較基準為 `116c9d8`，審查本次 Stage 1–2 提交：`git diff 116c9d8...HEAD`，依 repo 規則與該 change 的 Stage 1–2 規格分別檢查。
 
 - [HTTP 入口](src/index.ts)：POST 路由、404／405 與 Allow 標頭；意外錯誤是否只回通用 500，日誌不洩漏本文、token 或堆疊。
