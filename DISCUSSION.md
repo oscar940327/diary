@@ -1,7 +1,7 @@
 # Diary 目前方向
 
 更新日期：2026-10-31。這份文件只放現況，不累積完整對話。
-[這次的技術選擇](docs/tech-stack.md)｜[歷史討論與記錄方式](docs/discussions/README.md)｜[新版規格草稿](.scratch/diary-v2/spec.md)
+[這次的技術選擇](docs/tech-stack.md)｜[歷史討論與記錄方式](docs/discussions/README.md)｜[第一個 change 大綱](openspec/changes/bootstrap-discord-bot/proposal.md)
 
 ## 已確認
 
@@ -21,7 +21,8 @@
 - 目前位於 `main`，從乾淨的程式環境重新開始。
 - 原 `origin/ticket-09-trash-management` 另留，沒有合併。
 - 舊版 Python 後端、測試、Supabase、CI 與套件設定已從 `main` 移除。
-- 新版規劃在 `.scratch/diary-v2/`；舊 `.scratch/diary/` 是 v1 紀錄。
+- OpenSpec 已初始化，八個 change 都有 metadata 與 `proposal.md`，尚未建立 specs、design 或 tasks。
+- change 大綱在 `openspec/changes/`；先前 `.scratch/diary-v2/` 草稿尚未整併，舊 `.scratch/diary/` 是 v1 紀錄。
 - 尚未建立正式 Workers／D1 資源，尚未部署新版。這次提交先保存於本機。
 - 2026-10-31 最新查詢 GitHub：`v1` 已在遠端，版本是 `a47b662`；遠端 `main` 仍在 `36c62ae`。
 
@@ -32,13 +33,13 @@
 - Agent 是否隨首版上線；免費模型的額度、品質與私人資料處理條件。
 - 是否已有私人紀錄需要遷移，以及遷移與還原的驗收方式。
 - 文件是否再簡化：移除舊 ADR，並把 `docs/agents/` 的必要規則合進 `AGENTS.md`，尚未決定。
-- OpenSpec 如何初始化並接上現有工作流程；repo 目前尚未初始化，正式 changes 尚未建立。
+- OpenSpec change 與原 `.scratch/diary-v2/` 草稿、工作流程如何整合。
 
 ## 下一步
 
-使用者希望親自執行 OpenSpec prompt；建議先提交目前討論紀錄，再初始化 OpenSpec。
-近期先建立 Bot 與部署、日記記錄、日期查閱三個 change，後續候選先保留 proposal。
-依序細化當前 change，再補規格、設計與 tasks；repo 尚未初始化，這次不代為執行。
+目前八份大綱與 OpenSpec 初始化檔案尚未提交，建議先保存這個規劃起點。
+接著由使用者執行 prompt，只細化 `bootstrap-discord-bot`，釐清入口、擁有者限制與驗收方式，
+再補齊該 change 的規格、設計與 tasks。其他七個先保留大綱，目前未開始實作。
 
 ## 討論文件如何維持精簡
 
