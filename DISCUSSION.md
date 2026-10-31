@@ -14,7 +14,7 @@
 - 希望零付費運作，不使用 Supabase，不自動改用付費方案。
 - Diary 保存私人紀錄；note-garden 展示可公開的筆記與知識。
 - 考慮未來 Agent、提醒與網頁入口的擴充性，核心日記邏輯不綁定 Discord。
-- 採規格驅動開發：釐清範圍、寫規格、拆票、逐票 TDD 與獨立審查。
+- 採 OpenSpec 規格驅動開發，直接以 tasks 的編號分組控制範圍；每次 apply 由使用者指定 stage，不額外建立 tickets 或 ADR，保留 TDD 與新 session 獨立審查。
 - 希望用多個小型 OpenSpec change 逐步開發，先看拆分與順序，不把整個專案放在同一個 change。
 - 前三個近期 change 確定是 Bot 與部署、日記記錄、日期查閱；後續 change 希望先保存大綱，不先寫 tasks。
 
@@ -25,7 +25,7 @@
 - 原 `origin/ticket-09-trash-management` 另留，沒有合併。
 - 舊版 Python 後端、測試、Supabase、CI 與套件設定已從 `main` 移除。
 - OpenSpec 已初始化；`bootstrap-discord-bot` 已補齊 proposal、specs、design 與 tasks，其他七個 change 維持 metadata 與 proposal 大綱。
-- change 大綱在 `openspec/changes/`；先前 `.scratch/diary-v2/` 草稿尚未整併，舊 `.scratch/diary/` 是 v1 紀錄。
+- 現行規劃與進度在 `openspec/changes/`；早期 `.scratch/diary-v2/` 草稿、舊 `.scratch/diary/` 與 ADR 留作歷史參考，不作新版工作佇列。
 - 尚未建立正式 Workers／D1 資源，尚未部署新版。這次提交先保存於本機。
 - 2026-10-31 最新查詢 GitHub：`v1` 已在遠端，版本是 `a47b662`；遠端 `main` 仍在 `36c62ae`。
 
@@ -35,18 +35,17 @@
 - 補寫日期、時區、長文與大量查詢結果的操作方式。
 - Agent 是否隨首版上線；免費模型的額度、品質與私人資料處理條件。
 - 是否已有私人紀錄需要遷移，以及遷移與還原的驗收方式。
-- 文件是否再簡化：移除舊 ADR，並把 `docs/agents/` 的必要規則合進 `AGENTS.md`，尚未決定。
-- OpenSpec change 與原 `.scratch/diary-v2/` 草稿、工作流程如何整合。
+- 歷史 ADR、`.scratch` 與其他舊文件是否另行清理，尚未決定；本次只修正新版流程與文件指引。
 - `bootstrap-discord-bot` 的實際環境 ID、Worker 名稱與憑證，待未來設定；不影響目前規劃。
 
 ## 下一步
 
-八份大綱與初始化已提交為 `6f849dc`；這次已補齊 `bootstrap-discord-bot` 規劃，尚未提交。
-建議使用者查看並提交規劃，再於新 session 執行 apply：先登記三張實作票，只完成第一票的 2.1–2.4。
-第一票完成後，另開新 session 獨立審查 2.5，通過才接第二票。tasks 仍全部未執行，雲端驗收另行安排；本次未實作、部署、commit 或 push。
+`bootstrap-discord-bot` 已改為六個 stage：工具設定、入口驗證、權限回覆、環境工具、獨立審查、部署驗收。
+建議先查看新版 tasks，再於新 session 指定只 apply Stage 1–2；完成驗證入口即停止，使用者 `/ping` 留到 Stage 3。
+所有 tasks 尚未執行；Stage 5 另開 session 審查，通過後才進 Stage 6。其他七個 change 維持大綱，本次未實作、部署、commit 或 push。
 
 ## 討論文件如何維持精簡
 
 - 本文件維持約 80 行以內，只更新目前決定、未決問題與下一步。
 - 每次討論摘要寫入 `docs/discussions/YYYY-MM.md`，歷史較長時再分冊。
-- 技術選擇集中寫在白話的 `docs/tech-stack.md`；功能細節放規格與 Tickets。
+- 技術選擇集中寫在白話的 `docs/tech-stack.md`；功能細節與工作放 OpenSpec 的 specs、design 與 tasks。
