@@ -24,4 +24,6 @@ Before ending each Diary planning conversation, append a short, dated summary to
 
 ### Development workflow
 
+Implement each change on a dedicated branch based on `main`, such as `change/<change-name>`. Create or switch to that branch before writing implementation code; commit there and use a pull request to propose merging into `main`. Preserve unrelated worktree changes and keep them out of the PR.
+
 Follow the OpenSpec workflow in `docs/agents/development-workflow.md`. During apply, execute only the stages the user selected, use TDD for behavior changes, mark only verified tasks complete, and stop at the requested boundary. If no stage range was specified, clarify the range before implementation. Respect stage dependencies; do not silently include unselected stages. Run independent code review in a new session at the change's review stage before deployment acceptance. Existing authorization applies; do not ask again for already authorized actions.

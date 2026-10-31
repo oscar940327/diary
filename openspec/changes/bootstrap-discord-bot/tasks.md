@@ -1,6 +1,6 @@
 # Tasks
 
-以下是未來工作清單，本次只整理規劃，所有項目保持未勾選。
+以下是這個 change 的工作清單，勾選表示已完成該項驗收；未勾選項目仍待後續執行。
 依 [規格](specs/discord-command-access/spec.md) 與 [設計](design.md) 實作，不另外建立 tickets 或 ADR。
 
 每個編號分組是一個 stage，`X.Y` 是該 stage 裡的 task。每次 apply 由使用者指定 stage 範圍，
@@ -11,15 +11,18 @@ Stage 1–4 依序完成本機實作，Stage 5 另開新 session 做獨立審查
 Stage 6 的外部操作需有對應授權；只完成本機工作不能勾選它或宣稱已上線。
 只完成 Stage 1–2 時，交付的是驗證入口與協定 `PING`／`PONG`，使用者的 `/ping` 在 Stage 3。
 
+目前下一步：依使用者要求，先在新的 session 檢查已完成的 Stage 1–2，處理必要修正後才接 Stage 3。
+比較基準與檢查清單見 [目前方向的下一步](../../../DISCUSSION.md#下一步)；這次提前檢查不視為 Stage 5 完成。
+
 ## 1. Development and Test Setup
 
-- [ ] 1.1 建立最小 TypeScript、Hono、Wrangler 與 Cloudflare 官方 Workers／Vitest 測試工具設定並鎖定相容依賴；以依賴安裝、測試工具可啟動及 typecheck 確認工具可用，此步不加入指令業務行為，也不把工具可啟動當成功能驗收通過。
+- [x] 1.1 建立最小 TypeScript、Hono、Wrangler 與 Cloudflare 官方 Workers／Vitest 測試工具設定並鎖定相容依賴；以依賴安裝、測試工具可啟動及 typecheck 確認工具可用，此步不加入指令業務行為，也不把工具可啟動當成功能驗收通過。
 
 ## 2. Verified Interaction Endpoint
 
-- [ ] 2.1 Red：以測試用 Ed25519 金鑰，透過 Worker HTTP 入口加入協定 `PING`、缺少／錯誤簽章、竄改本文／時間戳記、繁體中文與空白保真、設定缺少／格式錯誤、已簽署錯誤 JSON／應用程式 ID／互動結構／類型及 404／405 的案例；確認測試因缺少對應入口行為而失敗，而非工具或匯入錯誤。
-- [ ] 2.2 Green：實作 `POST /interactions`、必要設定檢查、原始本文簽章驗證、解析與協定 `PING`／`PONG`；以 2.1 測試通過確認 200／400／401／503、404／405 與驗證順序符合規格，協定驗證不要求使用者或伺服器欄位。
-- [ ] 2.3 Refactor：整理驗證與解析邊界及通用錯誤回應；以 typecheck 與本 stage 整合測試全綠確認不回傳本文、token 或內部堆疊，也不引入資料保存或外部網路呼叫。
+- [x] 2.1 Red：以測試用 Ed25519 金鑰，透過 Worker HTTP 入口加入協定 `PING`、缺少／錯誤簽章、竄改本文／時間戳記、繁體中文與空白保真、設定缺少／格式錯誤、已簽署錯誤 JSON／應用程式 ID／互動結構／類型及 404／405 的案例；確認測試因缺少對應入口行為而失敗，而非工具或匯入錯誤。
+- [x] 2.2 Green：實作 `POST /interactions`、必要設定檢查、原始本文簽章驗證、解析與協定 `PING`／`PONG`；以 2.1 測試通過確認 200／400／401／503、404／405 與驗證順序符合規格，協定驗證不要求使用者或伺服器欄位。
+- [x] 2.3 Refactor：整理驗證與解析邊界及通用錯誤回應；以 typecheck 與本 stage 整合測試全綠確認不回傳本文、token 或內部堆疊，也不引入資料保存或外部網路呼叫。
 
 ## 3. Owner-only Private Ping
 

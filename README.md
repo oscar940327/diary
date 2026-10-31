@@ -9,8 +9,21 @@ Diary 是私人生活紀錄與記憶系統，先透過 Discord 指令使用。
 [白話技術文件](docs/tech-stack.md)。
 
 `main` 已移除舊版程式、測試、套件與 CI，從乾淨的程式環境開始。
-目前仍在新版規劃階段，尚未建立 Bot 程式或正式雲端資源。
-之後依 OpenSpec 的規格與 tasks 分階段實作，每次自行指定要做哪些 stage，再加入新版的安裝、測試與部署指令。
+目前已完成第一個 change 的 Stage 1–2：本機工具、Discord HTTP 入口、簽章驗證與協定 `PING`／`PONG`。
+使用者輸入的 `/ping`、擁有者限制與正式環境設定仍待後續 stage；尚未部署或建立正式雲端資源。
+依 OpenSpec 的規格與 tasks 分階段實作，每次自行指定要做哪些 stage。
+
+## 本機檢查
+
+使用 Node.js 24，安裝鎖定的依賴後執行：
+
+```powershell
+npm ci
+npm run typecheck
+npm test
+```
+
+測試在本機 Workers 執行環境跑，使用測試用簽署金鑰，不需要真實 Discord 或 Cloudflare 憑證。
 
 ## 從哪裡開始
 
