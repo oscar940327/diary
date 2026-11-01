@@ -11,8 +11,8 @@ Stage 1–4 依序完成本機實作，Stage 5 另開新 session 做獨立審查
 Stage 6 的外部操作需有對應授權；只完成本機工作不能勾選它或宣稱已上線。
 只完成 Stage 1–2 時，交付的是驗證入口與協定 `PING`／`PONG`，使用者的 `/ping` 在 Stage 3。
 
-目前下一步：依使用者要求，先在新的 session 檢查已完成的 Stage 1–2，處理必要修正後才接 Stage 3。
-比較基準與檢查清單見 [目前方向的下一步](../../../DISCUSSION.md#下一步)；這次提前檢查不視為 Stage 5 完成。
+目前下一步：Stage 1–2 已完成提前獨立審查；使用者已接受歷史 ADR 刪除留在本 PR，範圍 finding 已解除，可指定接續 Stage 3。
+比較基準與審查結果見 [目前方向的下一步](../../../DISCUSSION.md#下一步)；這次提前檢查不視為 Stage 5 完成。
 
 ## 1. Development and Test Setup
 
