@@ -1,6 +1,6 @@
 # Diary 目前方向
 
-更新日期：2026-11-01。這份文件只放現況，不累積完整對話。
+更新日期：2026-11-02。這份文件只放現況，不累積完整對話。
 [這次的技術選擇](docs/tech-stack.md)｜[歷史討論與記錄方式](docs/discussions/README.md)｜[第一個 change 大綱](openspec/changes/bootstrap-discord-bot/proposal.md)
 
 ## 已確認
@@ -27,9 +27,9 @@
 - Ticket 09 的遠端分支與本機遠端追蹤參照已依使用者要求刪除，沒有合併；最後版本為 `aca739e`，舊 PR #1 已關閉。
 - 舊版 Python 後端、測試、Supabase、CI 與套件設定已從 `main` 移除。
 - OpenSpec 已初始化；`bootstrap-discord-bot` 已補齊 proposal、specs、design 與 tasks，其他七個 change 維持 metadata 與 proposal 大綱。
-- `bootstrap-discord-bot` Stage 1–2 已完成，進度 4/21 tasks；44 個本機 Workers 測試、typecheck 與本機打包 dry run 通過。
+- `bootstrap-discord-bot` Stage 1–3 已完成，進度 8/21 tasks；本輪 82 個本機 Workers 測試、typecheck 與 OpenSpec 嚴格驗證通過，Stage 1–2 另有打包 dry run 通過紀錄。
 - 現行規劃與進度在 `openspec/changes/`；早期 `.scratch/diary-v2/` 草稿與舊 `.scratch/diary/` 留作歷史參考，ADR 由 `v1` 保存，均不作新版工作佇列。
-- 尚未建立正式 Workers／D1 資源，尚未部署新版；Stage 1–2 實作與後續文件提交已在 change 分支，檢查時本機 HEAD 與遠端追蹤分支一致。
+- 尚未建立正式 Workers／D1 資源，尚未部署新版；Stage 1–2 與後續文件已有提交，Stage 3 實作及本輪文件更新尚未 commit 或 push。
 - 2026-11-01 已查核 GitHub：`v1` 在遠端，版本是 `a47b662`；遠端 `main` 是 `116c9d8`，先前的實作 commit 尚未推到 main。
 
 ## 尚待決定
@@ -45,12 +45,12 @@
 
 [Draft PR #2](https://github.com/oscar940327/diary/pull/2) 已做 Stage 1–2 的雙軸獨立審查，比較起點為 `116c9d8ebfb22829fe7b96891b244dc5d763d71d`，HEAD 為 `cddebaebe6cba36fdc384045b0567138b7377056`。
 
-- Stage 1–2 功能未發現缺陷；本輪重新驗證 44 個測試、typecheck、OpenSpec 嚴格驗證及 Wrangler 本機打包 dry run 均通過。
-- Standards 與 Spec 原先都指出同一項 P2：歷史 ADR 刪除不在原審查範圍，文件也稱未納入。使用者已明確接受刪除留在 PR #2，此範圍 finding 已解除；本機文件已同步，GitHub PR 說明仍待改成包含 ADR 刪除。
-- Stage 1–2 的提前審查在新確認範圍下通過，沒有其他已知 blocking finding。下一步可由使用者指定 apply Stage 3，無須為這次文件調整重跑整套程式審查。
-- 審查結果、範圍調整與驗證限制見 [本月紀錄](docs/discussions/2026-11.md)。目前待提交的是文件變更，尚未 commit 或 push。
+- Stage 1–2 的提前審查已通過；使用者接受歷史 ADR 刪除留在 PR #2，原範圍 finding 已解除。GitHub PR 說明仍待反映這項範圍，這輪未查核或修改遠端。
+- 本輪只 apply Stage 3，已完成擁有者／伺服器雙重核對、私人 `/ping`、拒絕及未知指令提示；新增 38 個測試，與 Stage 2 的 44 個回歸測試全部通過。
+- 下一輪可指定 apply Stage 4，準備指令註冊工具、環境設定與操作文件；本輪完成 Stage 3 後停止。
+- Stage 1–4 完成後，另開新 session 執行 Stage 5 的完整獨立審查，通過後才進 Stage 6 真實部署驗收。TDD 與驗收紀錄見 [本月紀錄](docs/discussions/2026-11.md)。
 
-這次是 Stage 1–2 的提前審查，不代表 Stage 5 完成；Stage 3–6 與其他七個 change 保持原進度，尚未部署或合併 PR。
+先前 Stage 1–2 的提前審查不代表 Stage 5 完成；Stage 4–6 與其他七個 change 保持待辦，尚未部署或合併 PR。
 
 ## 討論文件如何維持精簡
 

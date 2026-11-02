@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import worker from '../src/index';
 import { createDiscordFixture } from './helpers/discord';
 
+// 從 Worker HTTP 入口驗證行為，保留真實簽章檢查。
 describe('Discord HTTP interaction endpoint', () => {
   let discord: Awaited<ReturnType<typeof createDiscordFixture>>;
 
@@ -9,6 +10,7 @@ describe('Discord HTTP interaction endpoint', () => {
     discord = await createDiscordFixture();
   });
 
+  // 協定 PING 不含使用者資訊，仍應正常回覆 PONG。
   it('acknowledges a signed protocol PING without user or guild fields', async () => {
     const request = await discord.signedRequest(JSON.stringify({
       application_id: discord.bindings.DISCORD_APPLICATION_ID,
@@ -22,6 +24,7 @@ describe('Discord HTTP interaction endpoint', () => {
     expect(await response.json()).toEqual({ type: 1 });
   });
 
+  // 簽章缺漏、格式錯誤或內容遭竄改，都必須在解析前拒絕。
   it('rejects a request without a Discord signature', async () => {
     const response = await worker.fetch(new Request('https://diary.test/interactions', {
       method: 'POST',
@@ -78,7 +81,7 @@ describe('Discord HTTP interaction endpoint', () => {
       const index = bytes.findIndex((byte) => byte.startsWith('0'));
       if (index === -1) continue;
 
-      // For example, the malformed pair "ag" must not be accepted as the byte 0x0a.
+      // 例如畸形字元對「ag」不能被寬鬆解析成有效位元組 0x0a。
       bytes[index] = `${bytes[index]![1]}g`;
       request.headers.set('x-signature-ed25519', bytes.join(''));
 
@@ -103,6 +106,7 @@ describe('Discord HTTP interaction endpoint', () => {
     expect((await worker.fetch(request, discord.bindings)).status).toBe(401);
   });
 
+  // 確認驗證使用原始本文，保留空白、中文與 emoji。
   it('preserves whitespace and Traditional Chinese in the signed body', async () => {
     const body = ` {\n  "application_id": "${discord.bindings.DISCORD_APPLICATION_ID}",\n  "type": 1,\n  "note": "今天記錄生活 🌱"\n}\n`;
     const response = await worker.fetch(await discord.signedRequest(body), discord.bindings);
@@ -111,6 +115,7 @@ describe('Discord HTTP interaction endpoint', () => {
     expect(await response.json()).toEqual({ type: 1 });
   });
 
+  // 設定不完整時停止處理，不放寬驗證條件。
   it('returns 503 when the application public key is missing', async () => {
     const request = await discord.signedRequest('{"type":1}');
 
@@ -146,6 +151,7 @@ describe('Discord HTTP interaction endpoint', () => {
     expect(await response.text()).toBe('Service unavailable');
   });
 
+  // 有效簽章只證明來源可信，本文仍須符合互動格式。
   it.each([
     ['non-JSON', '{'],
     ['empty body', ''],
@@ -165,6 +171,7 @@ describe('Discord HTTP interaction endpoint', () => {
     expect(await response.text()).toBe('Invalid interaction');
   });
 
+  // 分別驗證方法限制與不存在的路徑。
   it.each(['GET', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'])(
     'returns 405 and allows only POST for %s /interactions',
     async (method) => {
@@ -183,6 +190,7 @@ describe('Discord HTTP interaction endpoint', () => {
     expect(response.status).toBe(404);
   });
 
+  // 刻意讓讀取本文失敗，確認回應及日誌都不洩漏例外中的私人資料。
   it('keeps unexpected body-read errors out of responses and application logs', async () => {
     const privateDetail = 'private-body-and-interaction-token';
     const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});

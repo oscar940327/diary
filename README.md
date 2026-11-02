@@ -9,8 +9,8 @@ Diary 是私人生活紀錄與記憶系統，先透過 Discord 指令使用。
 [白話技術文件](docs/tech-stack.md)。
 
 `main` 已移除舊版程式、測試、套件與 CI，從乾淨的程式環境開始。
-目前已完成第一個 change 的 Stage 1–2：本機工具、Discord HTTP 入口、簽章驗證與協定 `PING`／`PONG`。
-使用者輸入的 `/ping`、擁有者限制與正式環境設定仍待後續 stage；尚未部署或建立正式雲端資源。
+目前已完成第一個 change 的 Stage 1–3：本機工具、Discord HTTP 入口、簽章驗證、協定 `PING`／`PONG`，以及擁有者在指定伺服器使用的私人 `/ping` 回覆。
+指令註冊工具與測試／正式環境設定仍待 Stage 4；尚未部署或在真實 Discord 驗收。
 依 OpenSpec 的規格與 tasks 分階段實作，每次自行指定要做哪些 stage。
 
 ## 本機檢查
