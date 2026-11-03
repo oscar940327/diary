@@ -12,7 +12,7 @@ Stage 6 的外部操作需有對應授權；只完成本機工作不能勾選它
 只完成 Stage 1–2 時，交付的是驗證入口與協定 `PING`／`PONG`，使用者的 `/ping` 在 Stage 3。
 
 目前下一步：Stage 1–5 已完成，進度 16/21。2026-11-03 在新 session 完成 Standards／Spec 雙軸獨立審查及本機驗證，各軸均無 findings；比較基準 `116c9d8`，受審 HEAD `acfefce`，詳見 [Stage 5 審查紀錄](review.md)。
-本次只執行 Stage 5 並停止；Stage 6 仍待使用者指定執行範圍及對應雲端操作授權，尚未部署或真實驗收。
+本輪已指定並授權執行 Stage 6 的 6.1–6.3，不部署正式環境；Cloudflare 帳號建立及 Wrangler 登入已完成，停在使用者建立 Discord 測試應用程式／私人伺服器及填寫本機設定，尚未部署或真實驗收。前置檢查與接續位置見 [測試環境驗收紀錄](acceptance.md)，未完成驗收的 tasks 保持未勾選。
 
 ## 1. Development and Test Setup
 

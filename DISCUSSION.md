@@ -27,9 +27,9 @@
 - Ticket 09 的遠端分支與本機遠端追蹤參照已依使用者要求刪除，沒有合併；最後版本為 `aca739e`，舊 PR #1 已關閉。
 - 舊版 Python 後端、測試、Supabase、CI 與套件設定已從 `main` 移除。
 - OpenSpec 已初始化；`bootstrap-discord-bot` 已補齊 proposal、specs、design 與 tasks，其他七個 change 維持 metadata 與 proposal 大綱。
-- `bootstrap-discord-bot` Stage 1–4 已完成，進度 13/21 tasks；本輪 118 個測試、typecheck、兩組打包 dry run 與乾淨環境操作驗收通過，OpenSpec 嚴格驗證通過。
+- `bootstrap-discord-bot` Stage 1–5 已完成，進度 16/21 tasks；Stage 5 雙軸獨立審查各 0 項 findings，Node.js 24 下 118 個測試、typecheck、兩組打包 dry run 與 OpenSpec 嚴格驗證通過。
 - 現行規劃與進度在 `openspec/changes/`；早期 `.scratch/diary-v2/` 草稿與舊 `.scratch/diary/` 留作歷史參考，ADR 由 `v1` 保存，均不作新版工作佇列。
-- 尚未建立正式 Workers／D1 資源，尚未部署新版；Stage 3 已提交至 `ad76973`，Stage 4 及本機文件更新尚未 commit 或 push。
+- 尚未建立正式 Workers／D1 資源，尚未部署新版；Stage 4 實作提交為 `acfefce`，Stage 5 審查文件已提交為 `0f76274`，本機較遠端追蹤分支多 2 個 commit；討論文件原有未提交更新已保留。
 - 2026-11-01 已查核 GitHub：`v1` 在遠端，版本是 `a47b662`；遠端 `main` 是 `116c9d8`，先前的實作 commit 尚未推到 main。
 
 ## 尚待決定
@@ -39,18 +39,19 @@
 - Agent 是否隨首版上線；免費模型的額度、品質與私人資料處理條件。
 - 是否已有私人紀錄需要遷移，以及遷移與還原的驗收方式。
 - `.scratch` 與其他舊文件是否另行清理，尚未決定；歷史 ADR 已同意在 PR #2 移除。
-- `bootstrap-discord-bot` 的實際環境 ID、Worker 名稱與憑證，待未來設定；不影響目前規劃。
+- `bootstrap-discord-bot` 的實際環境 ID 與憑證待設定；測試 Worker 暫定沿用設定中的 `diary-test`，遠端仍待核對。
 
 ## 下一步
 
-[Draft PR #2](https://github.com/oscar940327/diary/pull/2) 已做 Stage 1–2 的雙軸獨立審查，比較起點為 `116c9d8ebfb22829fe7b96891b244dc5d763d71d`，HEAD 為 `cddebaebe6cba36fdc384045b0567138b7377056`。
+[Draft PR #2](https://github.com/oscar940327/diary/pull/2) 尚未合併。本次在新 session 完成完整 Stage 1–4 的雙軸獨立審查，比較 `116c9d8ebfb22829fe7b96891b244dc5d763d71d...acfefce1430c02b44e5b095c13658c972e33f4e5`，涵蓋 48 個檔案。
 
-- Stage 1–2 的提前審查已通過，使用者也回報 code review 通過；本輪未重新核對該次範圍。2026-11-03 已更新 PR 標題與說明至 Stage 1–3，包含已接受的 ADR 刪除並保留 Draft；本輪 Stage 4 尚未推送或同步 PR。
-- 本輪只 apply Stage 4，完成必填環境的單一 `/ping` 註冊工具、dry run、測試／正式獨立目錄與操作文件；新增 36 個工具／環境測試，與原有 82 個回歸測試全數通過。
-- 下一步另開新 session 執行 Stage 5，以固定比較起點 `116c9d8` 核對完整 Stage 1–4，納入屆時已提交的實際 HEAD；必要修正與複查完成後才進 Stage 6。
-- 操作說明與規格情境驗收對照見 [操作文件](docs/operations/discord-bot.md)，本輪 TDD 與乾淨環境驗收摘要見 [本月第 2 冊](docs/discussions/2026-11-part-02.md)。
+- Stage 5 的 Standards 與 Spec 由兩個獨立代理平行審查，各 0 項 findings，沒有阻擋問題；完整結果與規格情境對照見 [審查紀錄](openspec/changes/bootstrap-discord-bot/review.md)。
+- Stage 5 的 5.1–5.3 已完成，既有 118 個回歸測試及本機檢查通過。
+- 本輪已指定並授權 Stage 6 的 6.1–6.3，只建立及驗收測試環境，不部署正式環境。Cloudflare 帳號已建立，使用者同意登入權限後 Wrangler 已登入；方案與 Discord 設定待核對。後續由使用者親自操作外部服務，Agent 提供步驟。
+- 已備妥受 Git 忽略的空白測試設定檔，目前停在使用者建立 `Diary Test`／私人伺服器及填入 ID、Public Key 與 token；尚未部署或真實註冊，6.1–6.3 均未勾選。下次從此處接續，詳見 [測試環境驗收紀錄](openspec/changes/bootstrap-discord-bot/acceptance.md)。
+- 操作說明見 [操作文件](docs/operations/discord-bot.md)，歷史 TDD、乾淨環境驗收及本輪摘要見 [本月第 2 冊](docs/discussions/2026-11-part-02.md)。
 
-先前的提前審查不代表 Stage 5 完成；Stage 5–6 與其他七個 change 保持待辦，尚未部署或合併 PR。
+Stage 5 已完成；Stage 6 正在準備測試環境，進度仍為 16/21，尚未部署或合併 PR。
 
 ## 討論文件如何維持精簡
 
