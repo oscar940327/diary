@@ -11,7 +11,7 @@ Stage 1–4 依序完成本機實作，Stage 5 另開新 session 做獨立審查
 Stage 6 的外部操作需有對應授權；只完成本機工作不能勾選它或宣稱已上線。
 只完成 Stage 1–2 時，交付的是驗證入口與協定 `PING`／`PONG`，使用者的 `/ping` 在 Stage 3。
 
-目前下一步：Stage 1–3 已完成本機實作與驗收，可指定接續 Stage 4。Stage 1–2 的提前獨立審查已通過，使用者已接受歷史 ADR 刪除留在本 PR；Stage 3 尚未獨立審查。
+目前下一步：Stage 1–4 已完成本機實作與驗收，接著另開新 session 執行 Stage 5 完整獨立審查。先前的提前審查與使用者回報不取代這次完整審查；Stage 6 仍待審查通過與對應授權。
 比較基準與審查結果見 [目前方向的下一步](../../../DISCUSSION.md#下一步)；這次提前檢查不視為 Stage 5 完成。
 
 ## 1. Development and Test Setup
@@ -33,11 +33,11 @@ Stage 6 的外部操作需有對應授權；只完成本機工作不能勾選它
 
 ## 4. Environment Setup and Operation Guide
 
-- [ ] 4.1 Red：對註冊工具加入攔截 HTTP 的測試，涵蓋必填環境、缺少設定、測試／正式目標隔離、dry run 不連線、token 不輸出及 Discord 回傳失敗；確認測試因缺少工具行為而失敗，且不使用真實憑證或呼叫 Discord。
-- [ ] 4.2 Green：建立環境必填的 TypeScript `/ping` 註冊工具與 dry run；以 4.1 測試通過確認只建立／更新指定應用程式與伺服器的單一 guild command，不註冊全域指令、不整批覆寫，也不在 Worker 啟動時註冊。
-- [ ] 4.3 提供測試與正式的獨立 Worker 設定、非秘密範例與本機秘密檔忽略規則；用測試及設定檢查確認不同應用程式／Worker／token 不互相回退，執行 `/ping` 的 Worker 不需要 Bot token，版本控制內沒有真實憑證。
-- [ ] 4.4 提供簡單操作文件，說明依賴安裝、本機啟動、測試、typecheck、打包 dry run、註冊 dry run、設定用途與未來驗收／回復步驟；從乾淨環境依文件操作，確認本機驗收不用雲端登入或真實憑證。
-- [ ] 4.5 Refactor：整理工具與操作文件後，執行 typecheck、完整自動測試及測試／正式兩組 Wrangler 打包 dry run；確認不建立遠端資源、不註冊指令，並記錄各規格情境對應的測試或未來人工驗收。
+- [x] 4.1 Red：對註冊工具加入攔截 HTTP 的測試，涵蓋必填環境、缺少設定、測試／正式目標隔離、dry run 不連線、token 不輸出及 Discord 回傳失敗；確認測試因缺少工具行為而失敗，且不使用真實憑證或呼叫 Discord。
+- [x] 4.2 Green：建立環境必填的 TypeScript `/ping` 註冊工具與 dry run；以 4.1 測試通過確認只建立／更新指定應用程式與伺服器的單一 guild command，不註冊全域指令、不整批覆寫，也不在 Worker 啟動時註冊。
+- [x] 4.3 提供測試與正式的獨立 Worker 設定、非秘密範例與本機秘密檔忽略規則；用測試及設定檢查確認不同應用程式／Worker／token 不互相回退，執行 `/ping` 的 Worker 不需要 Bot token，版本控制內沒有真實憑證。
+- [x] 4.4 提供簡單操作文件，說明依賴安裝、本機啟動、測試、typecheck、打包 dry run、註冊 dry run、設定用途與未來驗收／回復步驟；從乾淨環境依文件操作，確認本機驗收不用雲端登入或真實憑證。
+- [x] 4.5 Refactor：整理工具與操作文件後，執行 typecheck、完整自動測試及測試／正式兩組 Wrangler 打包 dry run；確認不建立遠端資源、不註冊指令，並記錄各規格情境對應的測試或未來人工驗收。
 
 ## 5. Independent Review
 

@@ -1,0 +1,8 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // 正式環境不繼承測試環境或根目錄的設定。
+  "name": "diary-production",
+  "main": "../../src/index.ts",
+  "compatibility_date": "2026-10-30",
+  "send_metrics": false
+}

@@ -1,14 +1,17 @@
 import { cloudflareTest } from '@cloudflare/vitest-plugin';
 import { defineConfig } from 'vitest/config';
 
-// 在本機 Workers 執行環境測試，沿用 Wrangler 的入口設定。
+// HTTP 行為在 Workers 測試；操作工具在 Node.js 測試。
 export default defineConfig({
-  plugins: [
-    cloudflareTest({
-      wrangler: { configPath: './wrangler.jsonc' },
-    }),
-  ],
   test: {
-    include: ['tests/**/*.test.ts'],
+    projects: [
+      {
+        plugins: [cloudflareTest({ wrangler: { configPath: './wrangler.jsonc' } })],
+        test: { name: 'workers', include: ['tests/*.test.ts'] },
+      },
+      {
+        test: { name: 'tools', include: ['tests/tooling/**/*.test.ts'], environment: 'node' },
+      },
+    ],
   },
 });

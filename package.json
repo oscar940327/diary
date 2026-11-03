@@ -8,6 +8,11 @@
   },
   "scripts": {
     "dev": "wrangler dev --local",
+    "dev:test": "wrangler dev --local --config environments/test/wrangler.jsonc",
+    "dev:production": "wrangler dev --local --config environments/production/wrangler.jsonc",
+    "build:test": "wrangler deploy --dry-run --cwd environments/test --config wrangler.jsonc --outdir ../../dist/test",
+    "build:production": "wrangler deploy --dry-run --cwd environments/production --config wrangler.jsonc --outdir ../../dist/production",
+    "register:ping": "node --env-file-if-exists=.env.registration scripts/register-ping.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

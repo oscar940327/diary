@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  // 目前僅供本機開發，測試與正式環境留待後續設定。
+  // 根目錄只供本機開發；測試與正式設定各自在 environments 目錄。
   "name": "diary-local",
   "main": "src/index.ts",
   // 固定執行環境相容日期，配合目前鎖定的測試工具版本。

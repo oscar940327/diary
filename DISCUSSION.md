@@ -1,6 +1,6 @@
 # Diary 目前方向
 
-更新日期：2026-11-02。這份文件只放現況，不累積完整對話。
+更新日期：2026-11-03。這份文件只放現況，不累積完整對話。
 [這次的技術選擇](docs/tech-stack.md)｜[歷史討論與記錄方式](docs/discussions/README.md)｜[第一個 change 大綱](openspec/changes/bootstrap-discord-bot/proposal.md)
 
 ## 已確認
@@ -27,9 +27,9 @@
 - Ticket 09 的遠端分支與本機遠端追蹤參照已依使用者要求刪除，沒有合併；最後版本為 `aca739e`，舊 PR #1 已關閉。
 - 舊版 Python 後端、測試、Supabase、CI 與套件設定已從 `main` 移除。
 - OpenSpec 已初始化；`bootstrap-discord-bot` 已補齊 proposal、specs、design 與 tasks，其他七個 change 維持 metadata 與 proposal 大綱。
-- `bootstrap-discord-bot` Stage 1–3 已完成，進度 8/21 tasks；本輪 82 個本機 Workers 測試、typecheck 與 OpenSpec 嚴格驗證通過，Stage 1–2 另有打包 dry run 通過紀錄。
+- `bootstrap-discord-bot` Stage 1–4 已完成，進度 13/21 tasks；本輪 118 個測試、typecheck、兩組打包 dry run 與乾淨環境操作驗收通過，OpenSpec 嚴格驗證通過。
 - 現行規劃與進度在 `openspec/changes/`；早期 `.scratch/diary-v2/` 草稿與舊 `.scratch/diary/` 留作歷史參考，ADR 由 `v1` 保存，均不作新版工作佇列。
-- 尚未建立正式 Workers／D1 資源，尚未部署新版；Stage 1–2 與後續文件已有提交，Stage 3 實作及本輪文件更新尚未 commit 或 push。
+- 尚未建立正式 Workers／D1 資源，尚未部署新版；Stage 3 已提交至 `ad76973`，Stage 4 及本機文件更新尚未 commit 或 push。
 - 2026-11-01 已查核 GitHub：`v1` 在遠端，版本是 `a47b662`；遠端 `main` 是 `116c9d8`，先前的實作 commit 尚未推到 main。
 
 ## 尚待決定
@@ -45,12 +45,12 @@
 
 [Draft PR #2](https://github.com/oscar940327/diary/pull/2) 已做 Stage 1–2 的雙軸獨立審查，比較起點為 `116c9d8ebfb22829fe7b96891b244dc5d763d71d`，HEAD 為 `cddebaebe6cba36fdc384045b0567138b7377056`。
 
-- Stage 1–2 的提前審查已通過；使用者接受歷史 ADR 刪除留在 PR #2，原範圍 finding 已解除。GitHub PR 說明仍待反映這項範圍，這輪未查核或修改遠端。
-- 本輪只 apply Stage 3，已完成擁有者／伺服器雙重核對、私人 `/ping`、拒絕及未知指令提示；新增 38 個測試，與 Stage 2 的 44 個回歸測試全部通過。
-- 下一輪可指定 apply Stage 4，準備指令註冊工具、環境設定與操作文件；本輪完成 Stage 3 後停止。
-- Stage 1–4 完成後，另開新 session 執行 Stage 5 的完整獨立審查，通過後才進 Stage 6 真實部署驗收。TDD 與驗收紀錄見 [本月紀錄](docs/discussions/2026-11.md)。
+- Stage 1–2 的提前審查已通過，使用者也回報 code review 通過；本輪未重新核對該次範圍。2026-11-03 已更新 PR 標題與說明至 Stage 1–3，包含已接受的 ADR 刪除並保留 Draft；本輪 Stage 4 尚未推送或同步 PR。
+- 本輪只 apply Stage 4，完成必填環境的單一 `/ping` 註冊工具、dry run、測試／正式獨立目錄與操作文件；新增 36 個工具／環境測試，與原有 82 個回歸測試全數通過。
+- 下一步另開新 session 執行 Stage 5，以固定比較起點 `116c9d8` 核對完整 Stage 1–4，納入屆時已提交的實際 HEAD；必要修正與複查完成後才進 Stage 6。
+- 操作說明與規格情境驗收對照見 [操作文件](docs/operations/discord-bot.md)，本輪 TDD 與乾淨環境驗收摘要見 [本月第 2 冊](docs/discussions/2026-11-part-02.md)。
 
-先前 Stage 1–2 的提前審查不代表 Stage 5 完成；Stage 4–6 與其他七個 change 保持待辦，尚未部署或合併 PR。
+先前的提前審查不代表 Stage 5 完成；Stage 5–6 與其他七個 change 保持待辦，尚未部署或合併 PR。
 
 ## 討論文件如何維持精簡
 
