@@ -2,6 +2,7 @@
 
 本文件對應 `bootstrap-discord-bot`。Stage 4 只驗收本機工具；Stage 5 完整獨立審查通過後，才依 Stage 6 授權操作真實環境。
 技術選擇見 [技術文件](../tech-stack.md)，工作進度見 [tasks](../../openspec/changes/bootstrap-discord-bot/tasks.md)。
+2026-11-05 使用者已確認兩環境部署、測試與 Stage 6 完成；原始討論與部分驗收明細日後補回，依據與限制見 [驗收紀錄](../../openspec/changes/bootstrap-discord-bot/acceptance.md)。以下部署步驟供日後操作參考，不表示現在需要重做。
 
 ## 本機安裝與檢查
 
@@ -81,7 +82,7 @@ npm run register:ping -- --env production --dry-run
 工具只 POST 單一 guild command；Discord 會建立或更新同名 `/ping`，不註冊全域指令、不整批覆寫其他指令，也不在 Worker 啟動時執行。
 HTTP 失敗只顯示狀態碼，網路錯誤只顯示通用訊息，不輸出 Discord 回傳本文、token 或例外堆疊；失敗後先確認設定再人工重試。
 
-## 未來 Stage 6：接上真實測試環境
+## Stage 6：接上真實測試環境
 
 以下操作會改動外部服務。前置條件是 Stage 5 通過，且已有對應測試環境授權；Stage 4 不執行。
 
@@ -105,7 +106,7 @@ npm run register:ping -- --env test
 6. 在手機、電腦與指定伺服器的另一個文字頻道分別執行測試 `/ping`，確認 3 秒內收到私人 `Pong!`。可用第二帳號時，再確認拒絕提示也只有該帳號看見；沒有第二帳號則記錄此人工項目未執行，引用自動測試，不當成人工驗收通過。
 7. 確認沒有公開回覆、私訊指令或對正式設定的改動，記錄實際版本、時間與結果。失敗先修復測試環境，保留正式環境。
 
-## 未來 Stage 6：正式環境與回復
+## Stage 6：正式環境與回復
 
 測試通過且正式操作已有授權後，另行核對正式目標，重做前述步驟。命令必須明確選正式環境：
 
@@ -133,16 +134,16 @@ npm run register:ping -- --env production
 | 本文或時間戳記被修改 | 同檔 body／timestamp changed after signing |
 | 入口驗證不含使用者資訊 | 同檔 PING without user or guild fields |
 | 偽造入口驗證 | 同檔 forged signature；回 401、不回 PONG |
-| 擁有者在兩個文字頻道使用 | `tests/commands.test.ts` 的兩個 channel 案例；Stage 6 真實頻道驗收待執行 |
+| 擁有者在兩個文字頻道使用 | `tests/commands.test.ts` 的兩個 channel 案例；真實驗收完成依據與明細限制見驗收紀錄 |
 | 其他使用者包含管理員 | 同檔 privately denies 的 another user／administrator |
 | 擁有者在錯誤伺服器或私訊使用 | 同檔 another guild／DM from the owner |
 | 無法核對操作者 | 同檔 missing member／user／ID 等拒絕案例 |
-| 正常連通 | 同檔私人 Pong 格式；Stage 6 手機、電腦、3 秒與可見性驗收待執行 |
+| 正常連通 | 同檔私人 Pong 格式；真實手機、電腦、3 秒與可見性驗收的完成依據與明細限制見驗收紀錄 |
 | 未支援的指令 | 同檔 unknown command 與同名 context-menu command |
 | 已簽署的錯誤內容 | 入口測試 signed invalid input 與指令測試 malformed command data |
 | 缺少必要設定 | 入口測試 missing／invalid settings；回 503 |
 | 無雲端憑證的本機驗收 | 三組工具檢查：Workers 測試、Node 註冊／環境測試及兩組打包 dry run |
-| 明確選擇測試環境 | `tests/tooling/register-ping.test.ts` 與 `environments.test.ts`；Stage 6 真實環境互不影響待驗收 |
+| 明確選擇測試環境 | `tests/tooling/register-ping.test.ts` 與 `environments.test.ts`；真實環境驗收完成依據與明細限制見驗收紀錄 |
 | 註冊操作未指定環境 | 註冊測試 requires exactly one supported environment；不發 HTTP |
 
 測試通過不等於已部署；所有真實結果仍須按 tasks 記錄後才勾選 Stage 6。
