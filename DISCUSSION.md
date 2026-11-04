@@ -43,14 +43,14 @@
 
 ## 下一步
 
-[PR #2](https://github.com/oscar940327/diary/pull/2) 尚未合併；本輪確認無需修改產品程式，更新結案文件並準備合併。
+[PR #2](https://github.com/oscar940327/diary/pull/2) 已更新為 Ready for review，GitHub 顯示可合併；結案文件已提交並推送，尚未執行合併。
 
 - Stage 5 新 session 審查及本輪合併前雙軸複查各 0 findings，沒有阻擋問題；完整結果見 [審查紀錄](openspec/changes/bootstrap-discord-bot/review.md)。
 - [驗收紀錄](openspec/changes/bootstrap-discord-bot/acceptance.md) 已記錄使用者確認整個 Stage 6 完成，以及原始紀錄缺漏；沒有補造版本、網址或量測數字，也沒有重新部署。
 - 後補討論從最新 `main` 開 `docs/restore-bootstrap-notes` 分支，補進原月份並註明補記日期，再另發 PR；若 change 已歸檔則更新歸檔路徑，不重新合併舊實作分支。
 - 操作說明見 [操作文件](docs/operations/discord-bot.md)，歷史 TDD、乾淨環境驗收及本輪摘要見 [本月第 2 冊](docs/discussions/2026-11-part-02.md)。
 
-Stage 1–6 已完成，21/21；下一步完成 PR 合併準備。合併與 OpenSpec 歸檔尚未執行。
+Stage 1–6 已完成，21/21；PR 合併準備完成，下一步查看 PR 後合併。合併與 OpenSpec 歸檔尚未執行。
 
 ## 討論文件如何維持精簡
 
