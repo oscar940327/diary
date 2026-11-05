@@ -9,8 +9,30 @@ Diary 是私人生活紀錄與記憶系統，先透過 Discord 指令使用。
 [白話技術文件](docs/tech-stack.md)。
 
 `main` 已移除舊版程式、測試、套件與 CI，從乾淨的程式環境開始。
-目前仍在新版規劃階段，尚未建立 Bot 程式或正式雲端資源。
-之後依 OpenSpec 的規格與 tasks 分階段實作，每次自行指定要做哪些 stage，再加入新版的安裝、測試與部署指令。
+目前已完成第一個 change：驗證入口、擁有者的私人 `/ping`、指令註冊工具、獨立環境設定、操作文件與雙軸獨立審查，Stage 1–6 共 21/21 tasks 完成。
+使用者已確認測試與正式環境部署、測試完成；遺失的討論與驗收明細日後補回。完成依據與紀錄限制見 [驗收紀錄](openspec/changes/bootstrap-discord-bot/acceptance.md)，審查見 [審查紀錄](openspec/changes/bootstrap-discord-bot/review.md)。
+依 OpenSpec 的規格與 tasks 分階段實作，每次自行指定要做哪些 stage。
+
+## 本機檢查
+
+使用 Node.js 24，安裝鎖定的依賴後執行：
+
+```bash
+npm ci
+npm run typecheck
+npm test
+```
+
+測試分為本機 Workers 行為與 Node.js 操作工具，使用測試用簽署金鑰並攔截對外請求，不需要真實 Discord 或 Cloudflare 憑證。
+
+兩組環境都可只在本機打包：
+
+```bash
+npm run build:test
+npm run build:production
+```
+
+本機啟動、註冊 dry run、設定用途、未來部署與回復步驟，見 [Discord Bot 操作說明](docs/operations/discord-bot.md)。
 
 ## 從哪裡開始
 
@@ -26,5 +48,5 @@ Diary 是私人生活紀錄與記憶系統，先透過 Discord 指令使用。
 
 `v1` 分支的 `a47b662` 保存清理前的完整版本。
 舊程式、測試、套件與部署設定需要查看時，切換到 `v1` 即可。
-原 Ticket 09 分支另留，沒有合併；目前變更先保存於本機。
-`docs/adr/` 與 `.scratch/` 內的舊資料保留作歷史參考，新版不必另外建立 ADR 或 tickets。
+原 Ticket 09 分支已停用並刪除，沒有合併；最後版本與處理紀錄見 [歷史討論](docs/discussions/2026-11.md)。
+歷史 ADR 已從新版分支移除，原始內容仍可在 `v1` 分支查看；`.scratch/` 仍留作歷史參考。新版不必另外建立 ADR 或 tickets。

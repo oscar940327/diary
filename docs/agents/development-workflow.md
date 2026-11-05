@@ -20,6 +20,16 @@ change 的設計取捨放 `design.md`，工作與驗收放 `tasks.md`，避免�
 | 真實環境驗收 | 依 tasks 的部署驗收 stage 與對應授權操作指定環境。 | 真實連線與必要人工情境有結果，未驗證項目明確保留。 |
 | 歸檔 | 實作、審查與必要驗收全數完成後，使用 `openspec-archive-change`。 | change 歸檔，能力規格同步到 `openspec/specs/`。 |
 
+## Branch workflow
+
+開始實作 change 前，先建立或切換到從 `main` 分出的專用分支，例如 `change/bootstrap-discord-bot`。
+實作 commit 放在該分支，透過 PR 提議合併到 `main`；不要直接在 `main` 提交實作。
+分支操作保留工作區既有變更，無關修改另行處理，不混入這個 PR。
+
+change 合併後才補回的討論或驗收紀錄，從最新 `main` 另開文件分支，例如 `docs/restore-bootstrap-notes`，
+補進對應月份的討論檔並另發 PR。若 change 已歸檔，詳細驗收紀錄更新其歸檔路徑；
+不用重開舊實作分支，也不重新合併已進入 `main` 的程式。歷史紀錄保留原討論日期，另註補記日期。
+
 ## Stage scope
 
 `tasks.md` 的 `## 1. ...`、`## 2. ...` 等編號分組，稱為 stage；`1.1`、`1.2` 是其中的 task。

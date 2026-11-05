@@ -1,0 +1,8 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  // 獨立目錄讓 Wrangler 只載入這裡的 .dev.vars。
+  "name": "diary-test",
+  "main": "../../src/index.ts",
+  "compatibility_date": "2026-10-30",
+  "send_metrics": false
+}
