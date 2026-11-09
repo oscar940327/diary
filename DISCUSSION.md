@@ -25,7 +25,7 @@
 ## 分支與實作現況
 
 - `main` 為 Diary v2，舊版保存在 `v1` 的 `a47b662`；歷史 Ticket 09、`.scratch/` 與 ADR 不作新版工作佇列。
-- [PR #2](https://github.com/oscar940327/diary/pull/2) 已於台灣時間 2026-11-06 合併，merge commit 為 `99018c2`。本次從更新後的 `main` 整理文件補記，使用 `docs/restore-bootstrap-notes` 分支。
+- [PR #2](https://github.com/oscar940327/diary/pull/2) 已於台灣時間 2026-11-06 合併，merge commit 為 `99018c2`。本次文件補記從更新後的 `main` 建立 `docs/restore-bootstrap-notes`，透過獨立文件 PR 交付。
 - `bootstrap-discord-bot` Stage 1–6 已完成，21/21。新 session Stage 5 審查與 11 月 5 日合併前雙軸複查均為 0 findings；產品程式相較 `acfefce` 沒有變動。
 - 測試及正式 Worker 已部署、驗收。兩組完整版本、入口、無簽章 401 與手機／電腦私人回覆證據已於 11 月 9 日補回 [驗收紀錄](openspec/changes/bootstrap-discord-bot/acceptance.md)。這是恢復既有紀錄，本次未重新操作雲端。
 - 沒有第二帳號，人工拒絕檢查未執行，已有後端自動測試證據；未實際演練 rollback，回復步驟與版本已核對。
@@ -41,8 +41,7 @@
 
 ## 下一步
 
-- 本文件補記分支已通過驗證，後續推送並另以文件 PR 納入 `main`；不重新合併已完成的實作 PR。
-- 後續再依 OpenSpec 流程歸檔 `bootstrap-discord-bot`，不要把 21/21 等同於已歸檔。
+- 文件補記納入 `main` 後，依 OpenSpec 流程歸檔 `bootstrap-discord-bot`；21/21 表示 tasks 完成，歸檔仍需另外執行。
 - 基礎收尾後，從最新 `main` 建立 `capture-diary-entry` 專用分支，先細化規格、設計與 tasks，再由使用者指定實作 stages。
 - 操作見 [Discord Bot 文件](docs/operations/discord-bot.md)，歷史與最新補記見 [討論索引](docs/discussions/README.md)。
 
