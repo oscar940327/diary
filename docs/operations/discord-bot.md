@@ -2,7 +2,7 @@
 
 本文件對應 `bootstrap-discord-bot`。Stage 4 只驗收本機工具；Stage 5 完整獨立審查通過後，才依 Stage 6 授權操作真實環境。
 技術選擇見 [技術文件](../tech-stack.md)，工作進度見 [tasks](../../openspec/changes/bootstrap-discord-bot/tasks.md)。
-2026-11-05 使用者已確認兩環境部署、測試與 Stage 6 完成；原始討論與部分驗收明細日後補回，依據與限制見 [驗收紀錄](../../openspec/changes/bootstrap-discord-bot/acceptance.md)。以下部署步驟供日後操作參考，不表示現在需要重做。
+2026-11-05 使用者已確認兩環境部署、測試與 Stage 6 完成；當時未同步的討論與驗收明細已於 2026-11-09 補回。原始完成依據、完整部署版本與人工未測限制均保留於 [驗收紀錄](../../openspec/changes/bootstrap-discord-bot/acceptance.md)。以下部署步驟供日後操作參考，不表示現在需要重做。
 
 ## 本機安裝與檢查
 

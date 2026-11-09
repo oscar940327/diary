@@ -1,16 +1,16 @@
 # Diary
 
 Diary 是私人生活紀錄與記憶系統，先透過 Discord 指令使用。
-手機和電腦都能記錄與閱讀，未來再加入 Agent、提醒或網頁入口。
+目標是讓使用者在手機和電腦記錄與閱讀，未來再加入 Agent、提醒或網頁入口。
 
 ## 這次怎麼做
 
 前端、後端、部署和資料庫的選擇，集中記在
 [白話技術文件](docs/tech-stack.md)。
 
-`main` 已移除舊版程式、測試、套件與 CI，從乾淨的程式環境開始。
-目前已完成第一個 change：驗證入口、擁有者的私人 `/ping`、指令註冊工具、獨立環境設定、操作文件與雙軸獨立審查，Stage 1–6 共 21/21 tasks 完成。
-使用者已確認測試與正式環境部署、測試完成；遺失的討論與驗收明細日後補回。完成依據與紀錄限制見 [驗收紀錄](openspec/changes/bootstrap-discord-bot/acceptance.md)，審查見 [審查紀錄](openspec/changes/bootstrap-discord-bot/review.md)。
+`main` 是 Diary v2，舊版保存在 `v1`。第一個 change 的 Stage 1–6 已完成，21/21 tasks；[PR #2](https://github.com/oscar940327/diary/pull/2) 已於 2026-11-06 合併，尚未進行 OpenSpec 歸檔。
+兩套部署、入口、手機／電腦私人 `/ping` 與測試環境回歸均有驗收紀錄。11 月 5 日結案時尚未同步的部署明細，已於 11 月 9 日補回；沒有第二帳號，人工拒絕未測，後端行為由自動測試涵蓋。詳見 [驗收紀錄](openspec/changes/bootstrap-discord-bot/acceptance.md) 與包含合併前複查的 [審查紀錄](openspec/changes/bootstrap-discord-bot/review.md)。
+目前可使用的是 `/ping`；日記保存與查閱仍待後續 change 實作。
 依 OpenSpec 的規格與 tasks 分階段實作，每次自行指定要做哪些 stage。
 
 ## 本機檢查
