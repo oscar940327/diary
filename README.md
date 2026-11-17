@@ -8,8 +8,8 @@ Diary 是私人生活紀錄與記憶系統，先透過 Discord 指令使用。
 前端、後端、部署和資料庫的選擇，集中記在
 [白話技術文件](docs/tech-stack.md)。
 
-`main` 是 Diary v2，舊版保存在 `v1`。第一個 change 的 Stage 1–6 已完成，21/21 tasks；[PR #2](https://github.com/oscar940327/diary/pull/2) 已於 2026-11-06 合併，尚未進行 OpenSpec 歸檔。
-兩套部署、入口、手機／電腦私人 `/ping` 與測試環境回歸均有驗收紀錄。11 月 5 日結案時尚未同步的部署明細，已於 11 月 9 日補回；沒有第二帳號，人工拒絕未測，後端行為由自動測試涵蓋。詳見 [驗收紀錄](openspec/changes/bootstrap-discord-bot/acceptance.md) 與包含合併前複查的 [審查紀錄](openspec/changes/bootstrap-discord-bot/review.md)。
+`main` 是 Diary v2，舊版保存在 `v1`。第一個 change 的 Stage 1–6 已完成，21/21 tasks；[PR #2](https://github.com/oscar940327/diary/pull/2) 已於 2026-11-06 合併，並於 2026-11-18 完成 OpenSpec 歸檔。
+兩套部署、入口、手機／電腦私人 `/ping` 與測試環境回歸均有驗收紀錄。11 月 5 日結案時尚未同步的部署明細，已於 11 月 9 日補回；沒有第二帳號，人工拒絕未測，後端行為由自動測試涵蓋。詳見 [驗收紀錄](openspec/changes/archive/2026-11-18-bootstrap-discord-bot/acceptance.md) 與包含合併前複查的 [審查紀錄](openspec/changes/archive/2026-11-18-bootstrap-discord-bot/review.md)。
 目前可使用的是 `/ping`；日記保存與查閱仍待後續 change 實作。
 依 OpenSpec 的規格與 tasks 分階段實作，每次自行指定要做哪些 stage。
 
@@ -39,7 +39,7 @@ npm run build:production
 - [這次的技術選擇](docs/tech-stack.md)
 - [目前方向與未決問題](DISCUSSION.md)
 - [OpenSpec changes](openspec/changes/)：各次變更的規劃與工作清單。
-- [第一個 change 的 tasks](openspec/changes/bootstrap-discord-bot/tasks.md)
+- [第一個 change 的 tasks](openspec/changes/archive/2026-11-18-bootstrap-discord-bot/tasks.md)
 - [領域用語](CONTEXT.md)
 - [歷史討論](docs/discussions/README.md)
 - [開發流程](docs/agents/development-workflow.md)
