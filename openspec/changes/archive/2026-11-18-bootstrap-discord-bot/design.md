@@ -4,7 +4,7 @@
 
 動機與範圍見 [proposal.md](proposal.md)，外部行為以 [能力規格](specs/discord-command-access/spec.md) 為準。
 `main` 已移除舊程式與套件設定，目前沒有可沿用的 v2 執行入口或測試工具；不從 `v1` 搬回舊框架。
-全專案技術選擇與原因見 [技術文件](../../../docs/tech-stack.md)。
+全專案技術選擇與原因見 [技術文件](../../../../docs/tech-stack.md)。
 
 本設計處理新後端、Discord 外部整合與安全驗證，因此需要設計文件。
 使用者已確認私人伺服器、擁有者與伺服器雙重限制、`/ping` 不綁定單一文字頻道、

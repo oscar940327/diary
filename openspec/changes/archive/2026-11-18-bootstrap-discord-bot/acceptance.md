@@ -58,7 +58,7 @@
 - 使用者已釐清看到指令的位置是伺服器內私人文字頻道，真正的私訊沒有測試 `/ping`；未發現需修正的程式缺陷，因此沒有修改程式、重註冊、刪除指令或新增診斷程式。
 - 6.3 完成時，首輪依指定範圍停在測試環境。第二帳號人工拒絕檢查依 task 約定保留未執行及既有自動測試證據；測試部署完整版本 ID 仍僅記前綴 `157df2c9`，尚未補齊，不宣稱已完成 6.5 的整體證據與回復核對。後續正式進度見下方 6.4。
 
-操作方式見 [操作文件](../../../docs/operations/discord-bot.md)。這次可提交的是進度與驗收文件，未包含產品程式變更或雲端憑證。
+操作方式見 [操作文件](../../../../docs/operations/discord-bot.md)。這次可提交的是進度與驗收文件，未包含產品程式變更或雲端憑證。
 
 ### 後續 6.4 正式環境部署進度
 
@@ -89,7 +89,7 @@ npx wrangler rollback 157df2c9-d4b4-4af6-bea3-5c4b2beeae32 --config environments
 npx wrangler rollback 5021c2d7-255f-4aed-86d7-4410e533bf8a --config environments/production/wrangler.jsonc
 ```
 
-若首次部署沒有先前可用版本，清除故障應用程式的 Interactions Endpoint URL，查詢其指定 guild 的 commands，僅刪除 `name=ping`、`type=1` 的單一 command。不要整批覆寫，另一環境保持原狀。Worker 回復不會同步回復 Discord 入口、指令或憑證設定，需分別核對；具體操作依 [操作文件](../../../docs/operations/discord-bot.md)。
+若首次部署沒有先前可用版本，清除故障應用程式的 Interactions Endpoint URL，查詢其指定 guild 的 commands，僅刪除 `name=ping`、`type=1` 的單一 command。不要整批覆寫，另一環境保持原狀。Worker 回復不會同步回復 Discord 入口、指令或憑證設定，需分別核對；具體操作依 [操作文件](../../../../docs/operations/discord-bot.md)。
 
 本次僅核對回復步驟與版本，未對正常服務實際執行 rollback 或停用。第二帳號私人拒絕人工未測；3 秒結果為使用者實測回報，未進行效能壓測。兩組未建立 D1、付費方案、自訂網域或自動部署；本 change 僅提供 `/ping`，沒有日記保存。憑證檔均受 Git 忽略，未納入此次文件提交。
 
@@ -110,7 +110,7 @@ npx wrangler rollback 5021c2d7-255f-4aed-86d7-4410e533bf8a --config environments
 | 6.4 | 使用者確認正式環境亦已部署並完成測試；本次未重新存取或改動正式環境。 |
 | 6.5 | 已核對設計與操作文件的回復安排，記錄目前結果及缺少原始紀錄的限制；使用者明確接受 Stage 6 完成。未執行回復演練，不宣稱已演練。 |
 
-回復方式仍依 [操作文件](../../../docs/operations/discord-bot.md)：有上一個可用版本時回復指定 Worker；首次部署無可回復版本時，移除對應 Discord 入口並停用其單一 `/ping`。Worker 與 Discord 設定須分別處理。
+回復方式仍依 [操作文件](../../../../docs/operations/discord-bot.md)：有上一個可用版本時回復指定 Worker；首次部署無可回復版本時，移除對應 Discord 入口並停用其單一 `/ping`。Worker 與 Discord 設定須分別處理。
 
 合併前另在這台重跑 118 個測試、typecheck 與兩組打包 dry run，均通過，詳見 [複查紀錄](review.md)。這些是本機證據，與使用者已完成的雲端驗收分開記錄。
 

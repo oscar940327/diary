@@ -30,7 +30,7 @@
 
 後續會涉及 Bot 後端、兩組 Discord 應用程式、Workers 設定、指令註冊工具與操作文件。
 只建立共用指令入口，不在這個 change 決定日記資料表。
-技術選擇與原因以 [技術文件](../../../docs/tech-stack.md) 為準；本 change 不重新選框架。
+技術選擇與原因以 [技術文件](../../../../docs/tech-stack.md) 為準；本 change 不重新選框架。
 
 ## Non-goals
 
