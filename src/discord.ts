@@ -23,17 +23,14 @@ type DiscordResponse =
   | { type: InteractionResponseType.PONG }
   | ReturnType<typeof recordForm>
   | {
-    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE;
-    data: { flags: InteractionResponseFlags.EPHEMERAL };
-  }
-  | {
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE;
     data: { content: string; flags: InteractionResponseFlags.EPHEMERAL };
   };
 
 // 成功交回 Discord 回覆內容，失敗交回 HTTP 狀態與通用訊息。
 type InteractionResult =
-  | { status: 200; response: DiscordResponse; afterResponse?: () => Promise<void> }
+  | { status: 200; response: DiscordResponse }
+  | { status: 202; capture: () => Promise<void> }
   | { status: 400 | 401 | 503; message: string };
 
 type CommandData = { name: string; type: number };
@@ -78,9 +75,8 @@ function isSnowflake(value: unknown): value is string {
   return typeof value === 'string' && /^[1-9]\d{0,19}$/.test(value);
 }
 
-function snowflakeTime(value: unknown): Date | null {
-  if (!isSnowflake(value)) return null;
-  const snowflake = BigInt(value);
+function snowflakeTime(id: string): Date | null {
+  const snowflake = BigInt(id);
   if (snowflake > maxSnowflake) return null;
   return new Date(Number((snowflake >> 22n) + discordEpochMs));
 }
@@ -177,7 +173,9 @@ function handleRecordSubmission(
   }
 
   // 互動 ID 記載本次送出時間，表單 custom_id 內的 ID 則用於辨識重送。
-  const submittedAt = snowflakeTime(interaction.id);
+  const interactionId = interaction.id;
+  if (!isSnowflake(interactionId)) return invalidInteraction;
+  const submittedAt = snowflakeTime(interactionId);
   if (submittedAt === null) return invalidInteraction;
 
   const input = validateRecordInput(form.originalContent, form.date, submittedAt);
@@ -202,12 +200,8 @@ function handleRecordSubmission(
     createdAt: receivedAt.toISOString(),
   };
   return {
-    status: 200,
-    response: {
-      type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
-      data: { flags: InteractionResponseFlags.EPHEMERAL },
-    },
-    afterResponse: () => captureRecord(db, submission, token),
+    status: 202,
+    capture: () => captureRecord(db, submission, { id: interactionId, token }),
   };
 }
 

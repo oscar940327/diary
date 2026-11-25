@@ -13,14 +13,12 @@ app.onError((_error, c) => {
 app.post('/interactions', async (c) => {
   // 將原始請求與環境設定交給驗證流程，再送出對應回覆。
   const result = await receiveDiscordInteraction(c.req.raw, c.env);
-  if (result.status !== 200) {
-    return c.text(result.message, result.status);
+  if (result.status === 202) {
+    c.executionCtx.waitUntil(result.capture());
+    return c.body(null, 202);
   }
-
-  if (result.afterResponse) {
-    c.executionCtx.waitUntil(result.afterResponse());
-  }
-  return c.json(result.response);
+  if (result.status === 200) return c.json(result.response);
+  return c.text(result.message, result.status);
 });
 
 // 同一路徑只接受 POST；其他路徑由 Hono 預設回傳 404。

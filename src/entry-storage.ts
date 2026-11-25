@@ -22,6 +22,12 @@ type SaveEntryResult =
   | { status: 'saved' | 'duplicate'; entry: Entry }
   | { status: 'conflict' };
 
+export class EntryInsertError extends Error {
+  constructor(cause: Error) {
+    super(cause.message, { cause });
+  }
+}
+
 const entryColumns = `
   id,
   application_id AS applicationId,
@@ -38,25 +44,31 @@ const entryColumns = `
 // 呼叫端先完成身分、內容及日期驗證，再交給這裡保存。
 // 資料庫錯誤往上傳遞，只有取得資料列才能回報已保存。
 export async function saveEntry(db: D1Database, submission: EntrySubmission): Promise<SaveEntryResult> {
-  const entry = await db.prepare(`
-    INSERT INTO entries (
-      id, application_id, owner_id, guild_id, submission_id, original_content,
-      requested_date, entry_date, created_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (application_id, owner_id, guild_id, submission_id) DO NOTHING
-    RETURNING ${entryColumns}
-  `).bind(
-    crypto.randomUUID(),
-    submission.applicationId,
-    submission.ownerId,
-    submission.guildId,
-    submission.submissionId,
-    submission.originalContent,
-    submission.requestedDate,
-    submission.entryDate,
-    submission.createdAt,
-  ).first<Entry>();
+  let entry: Entry | null;
+  try {
+    entry = await db.prepare(`
+      INSERT INTO entries (
+        id, application_id, owner_id, guild_id, submission_id, original_content,
+        requested_date, entry_date, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (application_id, owner_id, guild_id, submission_id) DO NOTHING
+      RETURNING ${entryColumns}
+    `).bind(
+      crypto.randomUUID(),
+      submission.applicationId,
+      submission.ownerId,
+      submission.guildId,
+      submission.submissionId,
+      submission.originalContent,
+      submission.requestedDate,
+      submission.entryDate,
+      submission.createdAt,
+    ).first<Entry>();
+  } catch (error) {
+    if (error instanceof Error) throw new EntryInsertError(error);
+    throw error;
+  }
 
   if (entry !== null) {
     return { status: 'saved', entry };
