@@ -2,7 +2,7 @@
 
 依 [日記規格](specs/diary-entry-capture/spec.md)、[入口變更](specs/discord-command-access/spec.md) 與 [設計](design.md) 執行；本文件的六個編號分組就是 stages，不另開 tickets 或 ADR。
 
-目前只完成規劃，0/26 tasks，所有 checkbox 均未驗收。開始實作前先從最新 `main` 建立或切換到 `change/capture-diary-entry`，保留工作區無關修改；每次 apply 只做使用者指定的 stages，完成後停止，不自行部署、commit 或 push。
+目前 Stage 1 已完成，4/26 tasks。實作在 `change/capture-diary-entry`，保留工作區無關修改；每次 apply 只做使用者指定的 stages，完成後停止，不自行部署、commit 或 push。
 
 依賴順序為 Stage 1 → 2 → 3 → 4 → 5 → 6。Stage 2 是表單到 D1 的中間成果，Stage 3 才完成頻道顯示；不能把中間成果當成完整日記功能或提前部署。
 
@@ -10,10 +10,10 @@
 
 ## 1. Local Diary Storage
 
-- [ ] 1.1 配置本機及 Workers 測試用 D1、migration 載入與隔離清理方式；確認測試不使用遠端 binding 或真實憑證，不建立雲端資料庫。
-- [ ] 1.2 以真實 D1 的保存／讀回失敗案例做 Red，再建立新增型 migration 與最小保存模組：原文、歸屬日期、UTC 建立時間、提交識別、擁有者／環境及可恢復的顯示狀態；確認繁中、換行與 emoji 原文不變。
-- [ ] 1.3 以重送、並行、相同識別不同內容及跨日重送案例做 Red，再用唯一約束與原子寫入達成一個提交至多一筆；不同表單相同文字仍為不同 Entry，失敗不留下假成功或覆寫原文。
-- [ ] 1.4 通過後整理資料保存邊界，確認參數化查詢、穩定 Entry 身分及後續分段進度欄位；重跑本 stage 與 typecheck，不新增通用資料庫框架或版本編輯功能。
+- [x] 1.1 配置本機及 Workers 測試用 D1、migration 載入與隔離清理方式；確認測試不使用遠端 binding 或真實憑證，不建立雲端資料庫。
+- [x] 1.2 以真實 D1 的保存／讀回失敗案例做 Red，再建立新增型 migration 與最小保存模組：原文、歸屬日期、UTC 建立時間、提交識別、擁有者／環境及可恢復的顯示狀態；確認繁中、換行與 emoji 原文不變。
+- [x] 1.3 以重送、並行、相同識別不同內容及跨日重送案例做 Red，再用唯一約束與原子寫入達成一個提交至多一筆；不同表單相同文字仍為不同 Entry，失敗不留下假成功或覆寫原文。
+- [x] 1.4 通過後整理資料保存邊界，確認參數化查詢、穩定 Entry 身分及後續分段進度欄位；重跑本 stage 與 typecheck，不新增通用資料庫框架或版本編輯功能。
 
 ## 2. Private Record Form and Capture
 
