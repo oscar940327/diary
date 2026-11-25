@@ -42,6 +42,8 @@ const invalidInteraction = { status: 400, message: 'Invalid interaction' } as co
 const recordModalPrefix = 'record:';
 const contentField = 'content';
 const dateField = 'date';
+const discordEpochMs = 1_420_070_400_000n;
+const maxSnowflake = (1n << 64n) - 1n;
 
 function recordForm(submissionId: string) {
   return {
@@ -74,6 +76,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isSnowflake(value: unknown): value is string {
   return typeof value === 'string' && /^[1-9]\d{0,19}$/.test(value);
+}
+
+function snowflakeTime(value: unknown): Date | null {
+  if (!isSnowflake(value)) return null;
+  const snowflake = BigInt(value);
+  if (snowflake > maxSnowflake) return null;
+  return new Date(Number((snowflake >> 22n) + discordEpochMs));
 }
 
 function readRecordForm(data: unknown) {
@@ -155,7 +164,7 @@ function commandResponse(data: CommandData): DiscordResponse {
 function handleRecordSubmission(
   interaction: Record<string, unknown>,
   bindings: VerifiedBindings,
-  submittedAt: Date,
+  receivedAt: Date,
 ): InteractionResult {
   const form = readRecordForm(interaction.data);
   const token = interaction.token;
@@ -166,6 +175,10 @@ function handleRecordSubmission(
   if (!isOwner(interaction, bindings)) {
     return { status: 200, response: privateMessage('無法使用此指令') };
   }
+
+  // 互動 ID 記載本次送出時間，表單 custom_id 內的 ID 則用於辨識重送。
+  const submittedAt = snowflakeTime(interaction.id);
+  if (submittedAt === null) return invalidInteraction;
 
   const input = validateRecordInput(form.originalContent, form.date, submittedAt);
   if (!input.ok) {
@@ -186,7 +199,7 @@ function handleRecordSubmission(
     originalContent: input.originalContent,
     requestedDate: input.requestedDate,
     entryDate: input.entryDate,
-    createdAt: submittedAt.toISOString(),
+    createdAt: receivedAt.toISOString(),
   };
   return {
     status: 200,
@@ -203,7 +216,7 @@ export async function receiveDiscordInteraction(
   request: Request,
   bindings: DiscordBindings,
 ): Promise<InteractionResult> {
-  const submittedAt = new Date();
+  const receivedAt = new Date();
   if (!hasRequiredSettings(bindings)) {
     return { status: 503, message: 'Service unavailable' };
   }
@@ -240,7 +253,7 @@ export async function receiveDiscordInteraction(
   }
 
   if (interaction.type === InteractionType.MODAL_SUBMIT) {
-    return handleRecordSubmission(interaction, bindings, submittedAt);
+    return handleRecordSubmission(interaction, bindings, receivedAt);
   }
 
   if (
@@ -257,6 +270,10 @@ export async function receiveDiscordInteraction(
   if (interaction.data.type === 1 && interaction.data.name === 'record') {
     if (!isSnowflake(interaction.id)) {
       return invalidInteraction;
+    }
+    if (bindings.DB === undefined) {
+      const message = '日記功能尚未設定資料庫，請完成設定後再執行 /record。';
+      return { status: 200, response: privateMessage(message) };
     }
     return { status: 200, response: recordForm(interaction.id) };
   }
