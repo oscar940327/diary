@@ -9,6 +9,9 @@ import { createDiscordFixture } from './helpers/discord';
 const submissionId = '456789012345678901';
 const beforeTaipeiMidnightId = '1575179251613696001'; // 2026-11-25 23:59:59 台北
 const atTaipeiMidnightId = '1575179255808000001'; // 2026-11-26 00:00:00 台北
+const readQuotaError = "Your account has exceeded D1's free tier daily row read limit.";
+const storageQuotaError =
+  "Your account has exceeded D1's maximum account storage limit, please contact Cloudflare to raise your limit";
 let discord: Awaited<ReturnType<typeof createDiscordFixture>>;
 
 beforeAll(async () => {
@@ -77,6 +80,14 @@ function savedEntry(id = submissionId) {
 async function freshDatabase() {
   await reset();
   await applyD1Migrations(env.DB, env.TEST_D1_MIGRATIONS);
+}
+
+function databaseRejectingInsert(reason: string) {
+  const prepare = vi.fn<(sql: string) => object>(sql => env.DB.prepare(sql));
+  prepare.mockReturnValueOnce({
+    bind: () => ({ first: async () => { throw new Error(`D1_ERROR: ${reason}`); } }),
+  });
+  return { prepare };
 }
 
 it('never starts a D1 write when Discord rejects the private acknowledgment', async () => {
@@ -169,6 +180,11 @@ it('acknowledges the submission before the D1 write and updates the same private
     expect.objectContaining({ method: 'PATCH' }),
   );
   expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toMatchObject({ content: '日記已保存。' });
+  for (const request of [acknowledge.mock.lastCall?.[1], update.mock.lastCall?.[1]]) {
+    expect(new Headers(request?.headers).get('user-agent')).toEqual(
+      expect.stringMatching(/^DiscordBot \(https:\/\/github\.com\/oscar940327\/diary, \d+\.\d+\.\d+\)$/),
+    );
+  }
 });
 
 it('privately reports an unconfirmed save before a slow D1 write finishes', async () => {
@@ -261,17 +277,12 @@ it('reports a confirmed write failure when the local schema has not been applied
 
 it.each([
   ["Your account has exceeded D1's free tier daily row write limit.", '每日額度已用完', '等額度重置'],
-  ["Your account has exceeded D1's free tier daily row read limit.", '每日額度已用完', '等額度重置'],
-  ["Your account has exceeded D1's maximum account storage limit.", '儲存空間已達上限', '釋出空間'],
+  [readQuotaError, '每日額度已用完', '等額度重置'],
+  [storageQuotaError, '儲存空間已達上限', '釋出空間'],
   ['Exceeded maximum DB size.', '儲存空間已達上限', '釋出空間'],
 ])('reports a confirmed refusal when D1 rejects the insert with %s', async (reason, explanation, nextStep) => {
-  const db = {
-    prepare() {
-      return {
-        bind: () => ({ first: async () => { throw new Error(`D1_ERROR: ${reason}`); } }),
-      };
-    },
-  };
+  await freshDatabase();
+  const db = databaseRejectingInsert(reason);
   const { update } = mockDiscordReplies();
   const { response, settled } = await send(formSubmission(), { DB: db });
 
@@ -283,7 +294,10 @@ it.each([
   expect(content).toContain(nextStep);
 });
 
-it('reports uncertainty when the quota prevents checking an existing submission', async () => {
+it.each([
+  ['今天的日記', '日記已保存。'],
+  ['修改過的日記', '這次提交已有不同的內容或日期'],
+])('checks the prior submission when storage quota rejects a replay of %s', async (content, expectedReply) => {
   await freshDatabase();
   const { update } = mockDiscordReplies();
   const first = await send(formSubmission(), { DB: env.DB });
@@ -291,11 +305,32 @@ it('reports uncertainty when the quota prevents checking an existing submission'
   const original = await savedEntry();
   expect(original).not.toBeNull();
 
-  const prepare = vi.fn()
-    .mockImplementationOnce((sql: string) => env.DB.prepare(sql))
-    .mockImplementationOnce(() => {
-      throw new Error("D1_ERROR: Your account has exceeded D1's free tier daily row read limit.");
-    });
+  const db = databaseRejectingInsert(storageQuotaError);
+  const retry = await send({
+    ...formSubmission(content), id: beforeTaipeiMidnightId, token: 'replay-interaction-token',
+  }, { DB: db });
+  await retry.settled();
+
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty(
+    'content', expect.stringContaining(expectedReply),
+  );
+  expect(await savedEntry()).toEqual(original);
+});
+
+it.each([false, true])('reports uncertainty when the quota prevents checking a replay (insert rejected: %s)', async (
+  insertRejected,
+) => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  const first = await send(formSubmission(), { DB: env.DB });
+  await first.settled();
+  const original = await savedEntry();
+  expect(original).not.toBeNull();
+
+  const { prepare } = insertRejected
+    ? databaseRejectingInsert(readQuotaError)
+    : { prepare: vi.fn<(sql: string) => object>().mockImplementationOnce(sql => env.DB.prepare(sql)) };
+  prepare.mockImplementationOnce(() => { throw new Error(`D1_ERROR: ${readQuotaError}`); });
   const retry = await send({
     ...formSubmission(), id: beforeTaipeiMidnightId, token: 'replay-interaction-token',
   }, { DB: { prepare } });
@@ -305,6 +340,7 @@ it('reports uncertainty when the quota prevents checking an existing submission'
   expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty(
     'content', expect.stringContaining('保存結果未確認'),
   );
+  expect(String(update.mock.lastCall?.[1]?.body)).not.toContain('再送出');
   expect(await savedEntry()).toEqual(original);
 });
 
@@ -343,10 +379,28 @@ it('reports a conflicting submission without replacing the saved content', async
   expect(await savedEntry()).toEqual(original);
 });
 
-it('keeps the saved entry when Discord rejects the private update and logs only a reason code', async () => {
+it.each([500, 502, 503, 504])('retries a temporary %i on the same private reply', async (status) => {
+  await freshDatabase();
+  const { acknowledge, update } = mockDiscordReplies();
+  update.mockResolvedValueOnce(new Response(null, { status }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { response, settled } = await send(formSubmission(), { DB: env.DB });
+
+  expect(response.status).toBe(202);
+  await settled();
+  expect(acknowledge).toHaveBeenCalledTimes(1);
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.calls[1]?.[0]).toBe(update.mock.calls[0]?.[0]);
+  expect(update.mock.calls[1]?.[1]?.body).toBe(update.mock.calls[0]?.[1]?.body);
+  expect(update.mock.calls[1]?.[1]?.signal).toBe(update.mock.calls[0]?.[1]?.signal);
+  expect(errors).not.toHaveBeenCalled();
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it.each([403, 429])('keeps the saved entry when Discord rejects the private update with %i', async (status) => {
   await freshDatabase();
   const { update } = mockDiscordReplies();
-  update.mockResolvedValue(new Response('秘密錯誤本文', { status: 500 }));
+  update.mockResolvedValue(new Response('秘密錯誤本文', { status }));
   const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
   const { response, settled } = await send(formSubmission(), { DB: env.DB });
 
@@ -371,9 +425,10 @@ it('keeps the saved entry without retrying a private reply Discord reports as mi
   expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
 });
 
-it('keeps the saved entry when updating the private reply times out', async () => {
+it('keeps the saved entry when a retry reaches the original reply deadline', async () => {
   await freshDatabase();
   const { update } = mockDiscordReplies();
+  update.mockResolvedValueOnce(new Response(null, { status: 503 }));
   update.mockImplementation(async (_url, request) => {
     const signal = request?.signal;
     if (!signal) throw new Error('Missing reply deadline');
@@ -385,7 +440,8 @@ it('keeps the saved entry when updating the private reply times out', async () =
 
   expect(response.status).toBe(202);
   await settled();
-  expect(update).toHaveBeenCalledTimes(1);
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.lastCall?.[1]?.signal).toBe(update.mock.calls[0]?.[1]?.signal);
   expect(update.mock.lastCall?.[1]?.signal?.aborted).toBe(true);
   expect(errors.mock.calls).toEqual([['RECORD_REPLY_UPDATE_FAILED']]);
   expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });

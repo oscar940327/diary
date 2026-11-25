@@ -23,9 +23,25 @@ type SaveEntryResult =
   | { status: 'conflict' };
 
 export class EntryInsertError extends Error {
+  readonly quota: 'daily' | 'storage' | null;
+
   constructor(cause: Error) {
     super(cause.message, { cause });
+    this.quota = insertQuota(cause.message);
   }
+}
+
+function insertQuota(message: string): EntryInsertError['quota'] {
+  if (/^D1_ERROR: Your account has exceeded D1's free tier daily row (?:read|write) limit(?:\.|$)/.test(message)) {
+    return 'daily';
+  }
+  if (
+    /^D1_ERROR: Your account has exceeded D1's maximum account storage limit(?:[,\.]|$)/.test(message)
+    || /^D1_ERROR: Exceeded maximum DB size(?:\.|$)/.test(message)
+  ) {
+    return 'storage';
+  }
+  return null;
 }
 
 const entryColumns = `
@@ -45,6 +61,7 @@ const entryColumns = `
 // 資料庫錯誤往上傳遞，只有取得資料列才能回報已保存。
 export async function saveEntry(db: D1Database, submission: EntrySubmission): Promise<SaveEntryResult> {
   let entry: Entry | null;
+  let quotaRejection: EntryInsertError | undefined;
   try {
     entry = await db.prepare(`
       INSERT INTO entries (
@@ -66,18 +83,21 @@ export async function saveEntry(db: D1Database, submission: EntrySubmission): Pr
       submission.createdAt,
     ).first<Entry>();
   } catch (error) {
-    if (error instanceof Error) throw new EntryInsertError(error);
-    throw error;
+    if (!(error instanceof Error)) throw error;
+    const failure = new EntryInsertError(error);
+    if (failure.quota === null) throw failure;
+    quotaRejection = failure;
+    entry = null;
   }
 
   if (entry !== null) {
     return { status: 'saved', entry };
   }
 
-  // 先由 D1 原子處理新增，再查詢已存在的同一筆提交。
+  // 新增發生衝突或被額度拒絕時，這份提交仍可能已存在。
   const existing = await findEntryBySubmission(db, submission);
   if (existing === null) {
-    throw new Error('Existing entry could not be confirmed');
+    throw quotaRejection ?? new Error('Existing entry could not be confirmed');
   }
   // 未填日期的重送沿用首次保存的日期及時間，即使重送時已跨日。
   if (

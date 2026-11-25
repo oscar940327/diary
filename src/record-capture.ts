@@ -1,9 +1,15 @@
 import { InteractionResponseFlags, InteractionResponseType } from 'discord-interactions';
+import { version } from '../package.json';
 import { EntryInsertError, saveEntry, type EntrySubmission } from './entry-storage';
 
 const acknowledgmentDeadlineMs = 2_000;
 const saveDeadlineMs = 20_000;
 const replyDeadlineMs = 4_000;
+const temporaryReplyStatuses = new Set([500, 502, 503, 504]);
+const discordHeaders = {
+  'content-type': 'application/json',
+  'user-agent': `DiscordBot (https://github.com/oscar940327/diary, ${version})`,
+};
 
 type RecordInteraction = { id: string; token: string };
 
@@ -36,13 +42,22 @@ export async function captureRecord(
   try {
     // 更新原本的延後回覆，沿用只有操作者能看到的設定。
     const url = `https://discord.com/api/v10/webhooks/${submission.applicationId}/${token}/messages/@original`;
-    const response = await fetch(url, {
+    const signal = AbortSignal.timeout(replyDeadlineMs);
+    const request: RequestInit = {
       method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
+      headers: discordHeaders,
       body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
       redirect: 'error',
-      signal: AbortSignal.timeout(replyDeadlineMs),
-    });
+      signal,
+    };
+    let response = await fetch(url, request);
+    let retryDelayMs = 200;
+    while (temporaryReplyStatuses.has(response.status)) {
+      // 同一則私人回覆的等待與重試共用原本的期限。
+      await scheduler.wait(retryDelayMs, { signal });
+      response = await fetch(url, request);
+      retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
+    }
     if (!response.ok) console.error('RECORD_REPLY_UPDATE_FAILED');
   } catch {
     console.error('RECORD_REPLY_UPDATE_FAILED');
@@ -53,7 +68,7 @@ async function acknowledgeRecord(interactionId: string, encodedToken: string): P
   try {
     const response = await fetch(`https://discord.com/api/v10/interactions/${interactionId}/${encodedToken}/callback`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: discordHeaders,
       body: JSON.stringify({
         type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
         data: { flags: InteractionResponseFlags.EPHEMERAL },
@@ -73,13 +88,10 @@ function saveFailureMessage(error: unknown): string {
     if (/^D1_ERROR: no such table: (?:main\.)?entries(?:: SQLITE_ERROR)?$/.test(error.message)) {
       return '日記未保存，資料庫尚未初始化，請套用資料表遷移後重新送出。';
     }
-    if (/^D1_ERROR: Your account has exceeded D1's free tier daily row (?:read|write) limit(?:\.|$)/.test(error.message)) {
+    if (error.quota === 'daily') {
       return '日記未保存，資料庫每日額度已用完，請保留原文並等額度重置後再送出。';
     }
-    if (
-      /^D1_ERROR: Your account has exceeded D1's maximum account storage limit(?:\.|$)/.test(error.message)
-      || /^D1_ERROR: Exceeded maximum DB size(?:\.|$)/.test(error.message)
-    ) {
+    if (error.quota === 'storage') {
       return '日記未保存，資料庫儲存空間已達上限，請保留原文並在釋出空間後再送出。';
     }
   }
