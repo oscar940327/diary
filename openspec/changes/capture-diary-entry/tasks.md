@@ -2,7 +2,7 @@
 
 依 [日記規格](specs/diary-entry-capture/spec.md)、[入口變更](specs/discord-command-access/spec.md) 與 [設計](design.md) 執行；本文件的六個編號分組就是 stages，不另開 tickets 或 ADR。
 
-目前 Stage 1 已完成，4/26 tasks。實作在 `change/capture-diary-entry`，保留工作區無關修改；每次 apply 只做使用者指定的 stages，完成後停止，不自行部署、commit 或 push。
+目前 Stage 1–2 已完成，9/26 tasks。實作在 `change/capture-diary-entry`，保留工作區無關修改；每次 apply 只做使用者指定的 stages，完成後停止，不自行部署、commit 或 push。
 
 依賴順序為 Stage 1 → 2 → 3 → 4 → 5 → 6。Stage 2 是表單到 D1 的中間成果，Stage 3 才完成頻道顯示；不能把中間成果當成完整日記功能或提前部署。
 
@@ -17,11 +17,11 @@
 
 ## 2. Private Record Form and Capture
 
-- [ ] 2.1 以真實簽署的 `/record`、modal submit、其他帳號含管理員、錯誤 guild、私訊及缺少身分案例做 Red，再完成私人表單與重複授權；未授權、未知或畸形互動不得碰 D1 或 Discord 出站 HTTP。
-- [ ] 2.2 以內容空白、4,000 長度邊界、emoji、合法／非法曆日、台北跨 UTC 日、過去及未來日期案例做 Red，再完成內容與日期驗證；明確驗證 UTF-16 計數、保留原文、不虛構事件時間。
-- [ ] 2.3 以表單取消、成功提交、重送、同日多筆與跨日重送案例做 Red，再接上 Stage 1：開表單不建 Entry，提交先私人確認收到，再保存並回報真實狀態；工作交給可等待的執行流程，不把未保存資料宣稱已保存。
-- [ ] 2.4 以缺少日記設定、資料庫明確失敗、寫入結果不明及提交衝突案例做 Red，再完成一句白話的保存狀態／原因／解法；不洩漏 token、本文或 stack，不因失敗建立替代 Entry。
-- [ ] 2.5 整理 HTTP、日期驗證與保存流程邊界；重跑本 stage、Stage 1 及既有簽章／PING／`/ping`／404／405／500 回歸與 typecheck，確認只交付表單到 D1 的中間成果，不提前完成 Stage 3 的顯示 tasks。
+- [x] 2.1 以真實簽署的 `/record`、modal submit、其他帳號含管理員、錯誤 guild、私訊及缺少身分案例做 Red，再完成私人表單與重複授權；未授權、未知或畸形互動不得碰 D1 或 Discord 出站 HTTP。
+- [x] 2.2 以內容空白、4,000 長度邊界、emoji、合法／非法曆日、台北跨 UTC 日、過去及未來日期案例做 Red，再完成內容與日期驗證；明確驗證 UTF-16 計數、保留原文、不虛構事件時間。
+- [x] 2.3 以表單取消、成功提交、重送、同日多筆與跨日重送案例做 Red，再接上 Stage 1：開表單不建 Entry，提交先私人確認收到，再保存並回報真實狀態；工作交給可等待的執行流程，不把未保存資料宣稱已保存。
+- [x] 2.4 以缺少日記設定、資料庫明確失敗、寫入結果不明及提交衝突案例做 Red，再完成一句白話的保存狀態／原因／解法；不洩漏 token、本文或 stack，不因失敗建立替代 Entry。
+- [x] 2.5 整理 HTTP、日期驗證與保存流程邊界；重跑本 stage、Stage 1 及既有簽章／PING／`/ping`／404／405／500 回歸與 typecheck，確認只交付表單到 D1 的中間成果，不提前完成 Stage 3 的顯示 tasks。
 
 ## 3. Channel Display and Manual Retry
 

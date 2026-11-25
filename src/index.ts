@@ -17,6 +17,9 @@ app.post('/interactions', async (c) => {
     return c.text(result.message, result.status);
   }
 
+  if (result.afterResponse) {
+    c.executionCtx.waitUntil(result.afterResponse());
+  }
   return c.json(result.response);
 });
 
