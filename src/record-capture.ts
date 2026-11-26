@@ -6,6 +6,7 @@ const acknowledgmentDeadlineMs = 2_000;
 const saveDeadlineMs = 20_000;
 const replyDeadlineMs = 4_000;
 const temporaryReplyStatuses = new Set([500, 502, 503, 504]);
+const privateLoadingFlags = InteractionResponseFlags.EPHEMERAL | (1 << 7); // Discord 的 LOADING 旗標
 const discordHeaders = {
   'content-type': 'application/json',
   'user-agent': `DiscordBot (https://github.com/oscar940327/diary, ${version})`,
@@ -19,7 +20,8 @@ export async function captureRecord(
   interaction: RecordInteraction,
 ): Promise<void> {
   const token = encodeURIComponent(interaction.token);
-  if (!(await acknowledgeRecord(interaction.id, token))) {
+  const replyUrl = `https://discord.com/api/v10/webhooks/${submission.applicationId}/${token}/messages/@original`;
+  if (!(await acknowledgeRecord(interaction.id, token, replyUrl))) {
     console.error('RECORD_ACKNOWLEDGMENT_FAILED');
     return;
   }
@@ -40,32 +42,64 @@ export async function captureRecord(
   }
 
   try {
-    // 更新原本的延後回覆，沿用只有操作者能看到的設定。
-    const url = `https://discord.com/api/v10/webhooks/${submission.applicationId}/${token}/messages/@original`;
-    const signal = AbortSignal.timeout(replyDeadlineMs);
-    const request: RequestInit = {
-      method: 'PATCH',
-      headers: discordHeaders,
-      body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
-      redirect: 'error',
-      signal,
-    };
-    let response = await fetch(url, request);
-    let retryDelayMs = 200;
-    while (temporaryReplyStatuses.has(response.status)) {
-      // 同一則私人回覆的等待與重試共用原本的期限。
-      await scheduler.wait(retryDelayMs, { signal });
-      response = await fetch(url, request);
-      retryDelayMs = Math.min(retryDelayMs * 2, 1_000);
-    }
-    if (!response.ok) console.error('RECORD_REPLY_UPDATE_FAILED');
+    if (!(await updatePrivateReply(replyUrl, content))) console.error('RECORD_REPLY_UPDATE_FAILED');
   } catch {
     console.error('RECORD_REPLY_UPDATE_FAILED');
   }
 }
 
-async function acknowledgeRecord(interactionId: string, encodedToken: string): Promise<boolean> {
+async function updatePrivateReply(replyUrl: string, content: string): Promise<boolean> {
+  // 等待和重試都共用同一個期限，且只更新原本的私人回覆。
+  const deadline = performance.now() + replyDeadlineMs;
+  const signal = AbortSignal.timeout(replyDeadlineMs);
+  const request: RequestInit = {
+    method: 'PATCH',
+    headers: discordHeaders,
+    body: JSON.stringify({ content, allowed_mentions: { parse: [] } }),
+    redirect: 'error',
+    signal,
+  };
+  let backoffMs = 200;
+  for (;;) {
+    signal.throwIfAborted();
+    let response: Response | undefined;
+    try {
+      response = await fetch(replyUrl, request);
+    } catch (error) {
+      if (!(error instanceof TypeError) || signal.aborted) throw error;
+    }
+
+    if (response?.ok) return true;
+    let waitMs = backoffMs;
+    if (response?.status === 429) {
+      const retryAfterMs = await readRetryAfterMs(response);
+      if (retryAfterMs === null) return false;
+      waitMs = Math.max(backoffMs, retryAfterMs);
+    } else if (response && !temporaryReplyStatuses.has(response.status)) {
+      return false;
+    }
+
+    if (waitMs >= deadline - performance.now()) return false;
+    await scheduler.wait(waitMs, { signal });
+    backoffMs = Math.min(backoffMs * 2, 1_000);
+  }
+}
+
+async function readRetryAfterMs(response: Response): Promise<number | null> {
+  const header = response.headers.get('retry-after')?.trim();
+  if (header && /^\d+(?:\.\d+)?$/.test(header)) {
+    return Math.ceil(Number(header) * 1_000);
+  }
+  const details = await response.json<{ retry_after?: unknown }>();
+  const seconds = details?.retry_after;
+  return typeof seconds === 'number' && Number.isFinite(seconds) && seconds >= 0
+    ? Math.ceil(seconds * 1_000)
+    : null;
+}
+
+async function acknowledgeRecord(interactionId: string, encodedToken: string, replyUrl: string): Promise<boolean> {
   try {
+    const signal = AbortSignal.timeout(acknowledgmentDeadlineMs);
     const response = await fetch(`https://discord.com/api/v10/interactions/${interactionId}/${encodedToken}/callback`, {
       method: 'POST',
       headers: discordHeaders,
@@ -74,9 +108,23 @@ async function acknowledgeRecord(interactionId: string, encodedToken: string): P
         data: { flags: InteractionResponseFlags.EPHEMERAL },
       }),
       redirect: 'error',
-      signal: AbortSignal.timeout(acknowledgmentDeadlineMs),
+      signal,
     });
-    return response.status === 204;
+    if (response.status === 204) return true;
+    if (response.status !== 400) return false;
+    const failure = await response.json<{ code?: unknown }>();
+    if (failure?.code !== 40060) return false;
+
+    // 重送時只在原本的回覆仍是私人「處理中」時繼續保存。
+    signal.throwIfAborted();
+    const original = await fetch(replyUrl, {
+      method: 'GET', headers: discordHeaders, cache: 'no-store', redirect: 'error', signal,
+    });
+    if (original.status !== 200) return false;
+    const message = await original.json<{ flags?: unknown }>();
+    const flags = message?.flags;
+    return typeof flags === 'number' && Number.isSafeInteger(flags) && flags >= 0
+      && (flags & privateLoadingFlags) === privateLoadingFlags;
   } catch {
     return false;
   }

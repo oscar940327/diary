@@ -59,13 +59,15 @@ function unusedResources() {
 
 function mockDiscordReplies() {
   const acknowledge = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+  const readOriginal = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }));
   const update = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
   vi.spyOn(globalThis, 'fetch').mockImplementation((url, request) => {
     if (request?.method === 'POST') return acknowledge(url, request);
+    if (request?.method === 'GET') return readOriginal(url, request);
     if (request?.method === 'PATCH') return update(url, request);
     throw new Error('Unexpected outbound request');
   });
-  return { acknowledge, update };
+  return { acknowledge, readOriginal, update };
 }
 
 function savedEntry(id = submissionId) {
@@ -125,6 +127,53 @@ it('never starts a D1 write when the Discord acknowledgment times out', async ()
   expect(acknowledge).toHaveBeenCalledTimes(1);
   expect(acknowledge.mock.lastCall?.[1]?.signal?.aborted).toBe(true);
   expect(readDatabase).not.toHaveBeenCalled();
+  expect(update).not.toHaveBeenCalled();
+  expect(errors.mock.calls).toEqual([['RECORD_ACKNOWLEDGMENT_FAILED']]);
+});
+
+it('recovers a missed save when Discord confirms the replay already has a private deferred reply', async () => {
+  await freshDatabase();
+  const { acknowledge, readOriginal, update } = mockDiscordReplies();
+  acknowledge
+    .mockRejectedValueOnce(new TypeError('Network connection lost.'))
+    .mockResolvedValueOnce(Response.json({ code: 40060 }, { status: 400 }));
+  readOriginal.mockResolvedValueOnce(Response.json({ flags: 192 }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const submission = formSubmission();
+
+  const first = await send(submission, { DB: env.DB });
+  await first.settled();
+  expect(await savedEntry()).toBeNull();
+  expect(update).not.toHaveBeenCalled();
+
+  const replay = await send(submission, { DB: env.DB });
+  await replay.settled();
+  const url = 'https://discord.com/api/v10/webhooks/123456789012345678/test-interaction-token/messages/@original';
+  expect(readOriginal).toHaveBeenCalledExactlyOnceWith(url, expect.objectContaining({ method: 'GET' }));
+  expect(readOriginal.mock.lastCall?.[1]?.signal).toBe(acknowledge.mock.lastCall?.[1]?.signal);
+  expect(update).toHaveBeenCalledExactlyOnceWith(url, expect.objectContaining({ method: 'PATCH' }));
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty('content', '日記已保存。');
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+  expect(errors.mock.calls).toEqual([['RECORD_ACKNOWLEDGMENT_FAILED']]);
+});
+
+it.each([
+  ['public loading reply', () => Response.json({ flags: 128 })],
+  ['private completed reply', () => Response.json({ flags: 64 })],
+  ['reply with malformed flags', () => Response.json({ flags: '192' })],
+  ['missing reply', () => new Response(null, { status: 404 })],
+] as const)('does not start saving a replay with a %s', async (_description, originalReply) => {
+  const { acknowledge, readOriginal, update } = mockDiscordReplies();
+  acknowledge.mockResolvedValueOnce(Response.json({ code: 40060 }, { status: 400 }));
+  readOriginal.mockResolvedValueOnce(originalReply());
+  const prepare = vi.fn();
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { settled } = await send(formSubmission(), { DB: { prepare } });
+  await settled();
+
+  expect(readOriginal).toHaveBeenCalledTimes(1);
+  expect(prepare).not.toHaveBeenCalled();
   expect(update).not.toHaveBeenCalled();
   expect(errors.mock.calls).toEqual([['RECORD_ACKNOWLEDGMENT_FAILED']]);
 });
@@ -394,6 +443,59 @@ it.each([500, 502, 503, 504])('retries a temporary %i on the same private reply'
   expect(update.mock.calls[1]?.[1]?.body).toBe(update.mock.calls[0]?.[1]?.body);
   expect(update.mock.calls[1]?.[1]?.signal).toBe(update.mock.calls[0]?.[1]?.signal);
   expect(errors).not.toHaveBeenCalled();
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it('retries the same private reply when the PATCH connection resets', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  update.mockRejectedValueOnce(new TypeError('Network connection lost.'));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.calls[1]).toEqual(update.mock.calls[0]);
+  expect(errors).not.toHaveBeenCalled();
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it.each([
+  ['Retry-After header', () => Response.json({}, { status: 429, headers: { 'retry-after': '0.35' } })],
+  ['retry_after body field', () => Response.json({ retry_after: 0.35 }, { status: 429 })],
+] as const)('waits for a short rate limit from the %s before retrying', async (_source, limitedReply) => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  let limitedAt = 0;
+  update.mockImplementationOnce(async () => {
+    limitedAt = performance.now();
+    return limitedReply();
+  });
+  update.mockImplementationOnce(async () => {
+    expect(performance.now() - limitedAt).toBeGreaterThanOrEqual(340);
+    return new Response(null, { status: 204 });
+  });
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.calls[1]).toEqual(update.mock.calls[0]);
+  expect(errors).not.toHaveBeenCalled();
+});
+
+it('stops when the rate limit exceeds the remaining time for the reply', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  update.mockResolvedValueOnce(new Response(null, { status: 503 }));
+  update.mockResolvedValueOnce(Response.json({}, { status: 429, headers: { 'retry-after': '3.95' } }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.lastCall?.[1]?.signal?.aborted).toBe(false);
+  expect(errors.mock.calls).toEqual([['RECORD_REPLY_UPDATE_FAILED']]);
   expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
 });
 
