@@ -1,9 +1,9 @@
-type SubmissionKey = {
+export type EntryScope = {
   applicationId: string;
   ownerId: string;
   guildId: string;
-  submissionId: string;
 };
+type SubmissionKey = EntryScope & { submissionId: string };
 
 export type EntrySubmission = SubmissionKey & {
   originalContent: string;
@@ -13,7 +13,7 @@ export type EntrySubmission = SubmissionKey & {
   createdAt: string;
 };
 
-type Entry = EntrySubmission & {
+export type Entry = EntrySubmission & {
   id: string;
   displayStatus: 'pending' | 'sent' | 'uncertain';
 };
@@ -42,6 +42,10 @@ function insertQuota(message: string): EntryInsertError['quota'] {
     return 'storage';
   }
   return null;
+}
+
+export function isDailyQuotaError(error: unknown): boolean {
+  return error instanceof Error && insertQuota(error.message) === 'daily';
 }
 
 const entryColumns = `
@@ -115,4 +119,11 @@ export async function findEntryBySubmission(db: D1Database, key: SubmissionKey):
     FROM entries
     WHERE application_id = ? AND owner_id = ? AND guild_id = ? AND submission_id = ?
   `).bind(key.applicationId, key.ownerId, key.guildId, key.submissionId).first<Entry>();
+}
+
+export async function findEntryById(db: D1Database, scope: EntryScope, id: string): Promise<Entry | null> {
+  return db.prepare(`
+    SELECT ${entryColumns} FROM entries
+    WHERE id = ? AND application_id = ? AND guild_id = ? AND owner_id = ?
+  `).bind(id, scope.applicationId, scope.guildId, scope.ownerId).first<Entry>();
 }

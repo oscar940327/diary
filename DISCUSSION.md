@@ -33,7 +33,7 @@
 - 沒有第二帳號，人工拒絕檢查未執行，已有後端自動測試證據；未實際演練 rollback，回復步驟與版本已核對。
 - 11 月 5 日「明細未同步」的本人確認與結案紀錄保留為歷史，不再作為目前缺漏；新增的合併前複查見 [review.md](openspec/changes/archive/2026-11-18-bootstrap-discord-bot/review.md)。
 - `bootstrap-discord-bot` 已於 2026-11-18 歸檔至 `openspec/changes/archive/2026-11-18-bootstrap-discord-bot/`，能力規格同步至 `openspec/specs/discord-command-access/spec.md`；歸檔 PR #4 已合併，本機 main 已同步。
-- `capture-diary-entry` 已完成 Stage 1–2，進度 9/26。本機 Workers 已驗證 `/record` 表單、內容與日期檢查、私人保存結果和 D1 寫入。其餘六個 change 維持提案大綱，雲端 D1 留待部署驗收。
+- `capture-diary-entry` 已完成 Stage 1–3，進度 14/26。本機驗證了 `/record` 保存、原文分段、私人回覆與手動重試。Discord 發送使用模擬回應，真實頻道與雲端 D1 留待部署驗收。其餘六個 change 維持提案大綱。
 
 ## 尚待決定
 
@@ -44,7 +44,7 @@
 
 ## 下一步
 
-- `capture-diary-entry` 接下來是 Stage 3 的私人頻道顯示與手動重試。由使用者指定下一輪實作範圍，詳見 [tasks](openspec/changes/capture-diary-entry/tasks.md)。
+- `capture-diary-entry` 接下來是 Stage 4 的環境工具與操作文件。由使用者指定下一輪實作範圍，詳見 [tasks](openspec/changes/capture-diary-entry/tasks.md)。
 - 操作見 [Discord Bot 文件](docs/operations/discord-bot.md)，歷史與最新補記見 [討論索引](docs/discussions/README.md)。
 
 ## 討論文件維護

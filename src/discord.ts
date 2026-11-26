@@ -4,7 +4,8 @@ import {
   InteractionType,
   verifyKey,
 } from 'discord-interactions';
-import { captureRecord } from './record-capture';
+import type { DiaryChannel } from './entry-display';
+import { captureRecord, retryRecord, type RetryTarget } from './record-capture';
 import { maxRecordLength, validateRecordInput } from './record-input';
 
 // 驗證請求與限制使用者所需的設定；ID 使用字串以保留精度。
@@ -16,7 +17,11 @@ type DiscordSettings = {
 };
 
 // 環境可能缺少設定，因此收到請求後仍須檢查。
-export type DiscordBindings = Partial<DiscordSettings> & { DB?: D1Database };
+export type DiscordBindings = Partial<DiscordSettings> & {
+  DB?: D1Database;
+  DISCORD_DIARY_CHANNEL_ID?: string;
+  DISCORD_BOT_TOKEN?: string;
+};
 type VerifiedBindings = DiscordBindings & DiscordSettings;
 
 type DiscordResponse =
@@ -157,6 +162,47 @@ function commandResponse(data: CommandData): DiscordResponse {
   return privateMessage(data.type === 1 && data.name === 'ping' ? 'Pong!' : '不支援此指令');
 }
 
+function diaryChannel(bindings: VerifiedBindings): DiaryChannel | null {
+  const channelId = bindings.DISCORD_DIARY_CHANNEL_ID;
+  const botToken = bindings.DISCORD_BOT_TOKEN;
+  return isSnowflake(channelId) && typeof botToken === 'string' && /^\S+$/.test(botToken)
+    ? { guildId: bindings.DISCORD_GUILD_ID, channelId, botToken }
+    : null;
+}
+
+function scope(bindings: VerifiedBindings) {
+  return {
+    applicationId: bindings.DISCORD_APPLICATION_ID,
+    guildId: bindings.DISCORD_GUILD_ID,
+    ownerId: bindings.DISCORD_OWNER_ID,
+  };
+}
+
+function readRetryTarget(data: unknown): RetryTarget | null {
+  if (!isRecord(data) || data.component_type !== 2 || typeof data.custom_id !== 'string') return null;
+  const parts = /^retry:(entry|submission):([^:]+)$/.exec(data.custom_id);
+  const kind = parts?.[1];
+  const id = parts?.[2];
+  if (kind === 'entry' && id && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/.test(id)) return { kind, id };
+  if (kind === 'submission' && isSnowflake(id)) return { kind, id };
+  return null;
+}
+
+function handleRetry(interaction: Record<string, unknown>, bindings: VerifiedBindings): InteractionResult {
+  const target = readRetryTarget(interaction.data);
+  const { id, token } = interaction;
+  if (!target || !isSnowflake(id) || typeof token !== 'string' || token.length === 0) return invalidInteraction;
+  if (!isOwner(interaction, bindings)) {
+    return { status: 200, response: privateMessage('無法使用此指令') };
+  }
+  const db = bindings.DB;
+  const channel = diaryChannel(bindings);
+  if (!db || !channel) {
+    return { status: 200, response: privateMessage('無法重試顯示，請確認目前環境的日記資料庫、頻道與 Bot 設定後再試。') };
+  }
+  return { status: 202, capture: () => retryRecord(db, scope(bindings), target, { id, token }, channel) };
+}
+
 function handleRecordSubmission(
   interaction: Record<string, unknown>,
   bindings: VerifiedBindings,
@@ -188,11 +234,13 @@ function handleRecordSubmission(
     const message = '日記未保存，資料庫尚未設定，請完成設定後重新送出。';
     return { status: 200, response: privateMessage(message) };
   }
+  const channel = diaryChannel(bindings);
+  if (!channel) {
+    return { status: 200, response: privateMessage('日記未保存，請確認日記頻道與 Bot 設定後再送出。') };
+  }
 
   const submission = {
-    applicationId: bindings.DISCORD_APPLICATION_ID,
-    guildId: bindings.DISCORD_GUILD_ID,
-    ownerId: bindings.DISCORD_OWNER_ID,
+    ...scope(bindings),
     submissionId: form.submissionId,
     originalContent: input.originalContent,
     requestedDate: input.requestedDate,
@@ -201,7 +249,7 @@ function handleRecordSubmission(
   };
   return {
     status: 202,
-    capture: () => captureRecord(db, submission, { id: interactionId, token }),
+    capture: () => captureRecord(db, submission, { id: interactionId, token }, channel),
   };
 }
 
@@ -249,6 +297,9 @@ export async function receiveDiscordInteraction(
   if (interaction.type === InteractionType.MODAL_SUBMIT) {
     return handleRecordSubmission(interaction, bindings, receivedAt);
   }
+  if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
+    return handleRetry(interaction, bindings);
+  }
 
   if (
     interaction.type !== InteractionType.APPLICATION_COMMAND || !isCommandData(interaction.data)
@@ -268,6 +319,9 @@ export async function receiveDiscordInteraction(
     if (bindings.DB === undefined) {
       const message = '日記功能尚未設定資料庫，請完成設定後再執行 /record。';
       return { status: 200, response: privateMessage(message) };
+    }
+    if (!diaryChannel(bindings)) {
+      return { status: 200, response: privateMessage('日記功能尚未設定，請確認日記頻道與 Bot 設定後再執行 /record。') };
     }
     return { status: 200, response: recordForm(interaction.id) };
   }
