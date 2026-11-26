@@ -5,5 +5,15 @@
   "main": "src/index.ts",
   // 固定執行環境相容日期，配合目前鎖定的測試工具版本。
   "compatibility_date": "2026-10-30",
+  "d1_databases": [
+    {
+      // 本機開發使用保留的識別值，不連到遠端資料庫。
+      "binding": "DB",
+      "database_name": "diary-local",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "remote": false,
+      "migrations_dir": "migrations"
+    }
+  ],
   "send_metrics": false
 }

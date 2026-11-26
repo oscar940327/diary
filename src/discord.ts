@@ -4,6 +4,9 @@ import {
   InteractionType,
   verifyKey,
 } from 'discord-interactions';
+import type { DiaryChannel } from './entry-display';
+import { captureRecord, retryRecord, type RetryTarget } from './record-capture';
+import { maxRecordLength, validateRecordInput } from './record-input';
 
 // 驗證請求與限制使用者所需的設定；ID 使用字串以保留精度。
 type DiscordSettings = {
@@ -14,11 +17,16 @@ type DiscordSettings = {
 };
 
 // 環境可能缺少設定，因此收到請求後仍須檢查。
-export type DiscordBindings = Partial<DiscordSettings>;
+export type DiscordBindings = Partial<DiscordSettings> & {
+  DB?: D1Database;
+  DISCORD_DIARY_CHANNEL_ID?: string;
+  DISCORD_BOT_TOKEN?: string;
+};
+type VerifiedBindings = DiscordBindings & DiscordSettings;
 
-// 目前只回覆協定 PONG 或帶私人旗標的文字訊息。
 type DiscordResponse =
   | { type: InteractionResponseType.PONG }
+  | ReturnType<typeof recordForm>
   | {
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE;
     data: { content: string; flags: InteractionResponseFlags.EPHEMERAL };
@@ -27,17 +35,93 @@ type DiscordResponse =
 // 成功交回 Discord 回覆內容，失敗交回 HTTP 狀態與通用訊息。
 type InteractionResult =
   | { status: 200; response: DiscordResponse }
+  | { status: 202; capture: () => Promise<void> }
   | { status: 400 | 401 | 503; message: string };
 
 type CommandData = { name: string; type: number };
+
+const invalidInteraction = { status: 400, message: 'Invalid interaction' } as const;
+const recordModalPrefix = 'record:';
+const contentField = 'content';
+const dateField = 'date';
+const discordEpochMs = 1_420_070_400_000n;
+const maxSnowflake = (1n << 64n) - 1n;
+
+function recordForm(submissionId: string) {
+  return {
+    type: InteractionResponseType.MODAL as const,
+    data: {
+      custom_id: `${recordModalPrefix}${submissionId}`,
+      title: '記錄日記',
+      components: [
+        {
+          type: 18, // Label
+          label: '日記內容',
+          component: { type: 4, custom_id: contentField, style: 2, required: true, max_length: maxRecordLength },
+        },
+        {
+          type: 18,
+          label: '歸屬日期（選填）',
+          component: {
+            type: 4, custom_id: dateField, style: 1, required: false, max_length: 10, placeholder: 'YYYY-MM-DD',
+          },
+        },
+      ],
+    },
+  };
+}
 
 // 確認是一般物件，才能安全讀取外部 JSON 的欄位。
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isSnowflake(value: unknown): value is string {
+  return typeof value === 'string' && /^[1-9]\d{0,19}$/.test(value);
+}
+
+function snowflakeTime(id: string): Date | null {
+  const snowflake = BigInt(id);
+  if (snowflake > maxSnowflake) return null;
+  return new Date(Number((snowflake >> 22n) + discordEpochMs));
+}
+
+function readRecordForm(data: unknown) {
+  if (
+    !isRecord(data) || typeof data.custom_id !== 'string'
+    || !data.custom_id.startsWith(recordModalPrefix) || !Array.isArray(data.components)
+  ) {
+    return null;
+  }
+
+  const submissionId = data.custom_id.slice(recordModalPrefix.length);
+  if (!isSnowflake(submissionId)) return null;
+
+  let originalContent: string | undefined;
+  let date: string | undefined;
+  for (const label of data.components as unknown[]) {
+    if (!isRecord(label) || label.type !== 18 || !isRecord(label.component) || label.component.type !== 4) {
+      return null;
+    }
+
+    const input = label.component;
+    if (input.custom_id === contentField && originalContent === undefined && typeof input.value === 'string') {
+      originalContent = input.value;
+    } else if (
+      input.custom_id === dateField && date === undefined
+      && (input.value === undefined || typeof input.value === 'string')
+    ) {
+      date = input.value ?? '';
+    } else {
+      return null;
+    }
+  }
+
+  return originalContent === undefined ? null : { submissionId, originalContent, date: date ?? '' };
+}
+
 // 公開金鑰須為 32 bytes 的 hex，三個 ID 須為正整數字串。
-function hasRequiredSettings(bindings: DiscordBindings): bindings is DiscordSettings {
+function hasRequiredSettings(bindings: DiscordBindings): bindings is VerifiedBindings {
   const publicKey = bindings.DISCORD_PUBLIC_KEY;
   const ids = [
     bindings.DISCORD_APPLICATION_ID,
@@ -78,11 +162,103 @@ function commandResponse(data: CommandData): DiscordResponse {
   return privateMessage(data.type === 1 && data.name === 'ping' ? 'Pong!' : '不支援此指令');
 }
 
+function diaryChannel(bindings: VerifiedBindings): DiaryChannel | null {
+  const channelId = bindings.DISCORD_DIARY_CHANNEL_ID;
+  const botToken = bindings.DISCORD_BOT_TOKEN;
+  return isSnowflake(channelId) && typeof botToken === 'string' && /^\S+$/.test(botToken)
+    ? { guildId: bindings.DISCORD_GUILD_ID, channelId, botToken }
+    : null;
+}
+
+function scope(bindings: VerifiedBindings) {
+  return {
+    applicationId: bindings.DISCORD_APPLICATION_ID,
+    guildId: bindings.DISCORD_GUILD_ID,
+    ownerId: bindings.DISCORD_OWNER_ID,
+  };
+}
+
+function readRetryTarget(data: unknown): RetryTarget | null {
+  if (!isRecord(data) || data.component_type !== 2 || typeof data.custom_id !== 'string') return null;
+  const parts = /^retry:(entry|submission):([^:]+)$/.exec(data.custom_id);
+  const kind = parts?.[1];
+  const id = parts?.[2];
+  if (kind === 'entry' && id && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/.test(id)) return { kind, id };
+  if (kind === 'submission' && isSnowflake(id)) return { kind, id };
+  return null;
+}
+
+function handleRetry(interaction: Record<string, unknown>, bindings: VerifiedBindings): InteractionResult {
+  const target = readRetryTarget(interaction.data);
+  const { id, token } = interaction;
+  if (!target || !isSnowflake(id) || typeof token !== 'string' || token.length === 0) return invalidInteraction;
+  if (!isOwner(interaction, bindings)) {
+    return { status: 200, response: privateMessage('無法使用此指令') };
+  }
+  const db = bindings.DB;
+  const channel = diaryChannel(bindings);
+  if (!db || !channel) {
+    return { status: 200, response: privateMessage('無法重試顯示，請確認目前環境的日記資料庫、頻道與 Bot 設定後再試。') };
+  }
+  return { status: 202, capture: () => retryRecord(db, scope(bindings), target, { id, token }, channel) };
+}
+
+function handleRecordSubmission(
+  interaction: Record<string, unknown>,
+  bindings: VerifiedBindings,
+  receivedAt: Date,
+): InteractionResult {
+  const form = readRecordForm(interaction.data);
+  const token = interaction.token;
+  if (form === null || typeof token !== 'string' || token.length === 0) {
+    return invalidInteraction;
+  }
+
+  if (!isOwner(interaction, bindings)) {
+    return { status: 200, response: privateMessage('無法使用此指令') };
+  }
+
+  // 互動 ID 記載本次送出時間，表單 custom_id 內的 ID 則用於辨識重送。
+  const interactionId = interaction.id;
+  if (!isSnowflake(interactionId)) return invalidInteraction;
+  const submittedAt = snowflakeTime(interactionId);
+  if (submittedAt === null) return invalidInteraction;
+
+  const input = validateRecordInput(form.originalContent, form.date, submittedAt);
+  if (!input.ok) {
+    return { status: 200, response: privateMessage(input.message) };
+  }
+
+  const db = bindings.DB;
+  if (db === undefined) {
+    const message = '日記未保存，資料庫尚未設定，請完成設定後重新送出。';
+    return { status: 200, response: privateMessage(message) };
+  }
+  const channel = diaryChannel(bindings);
+  if (!channel) {
+    return { status: 200, response: privateMessage('日記未保存，請確認日記頻道與 Bot 設定後再送出。') };
+  }
+
+  const submission = {
+    ...scope(bindings),
+    submissionId: form.submissionId,
+    originalContent: input.originalContent,
+    requestedDate: input.requestedDate,
+    entryDate: input.entryDate,
+    createdAt: receivedAt.toISOString(),
+  };
+  return {
+    status: 202,
+    capture: () => captureRecord(db, submission, { id: interactionId, token }, channel),
+  };
+}
+
 // 處理順序：設定 → 簽章 → 內容 → 授權 → 指令回覆。
 export async function receiveDiscordInteraction(
   request: Request,
   bindings: DiscordBindings,
 ): Promise<InteractionResult> {
+  const receivedAt = new Date();
   if (!hasRequiredSettings(bindings)) {
     return { status: 503, message: 'Service unavailable' };
   }
@@ -105,12 +281,12 @@ export async function receiveDiscordInteraction(
     const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false }).decode(body);
     interaction = JSON.parse(text);
   } catch {
-    return { status: 400, message: 'Invalid interaction' };
+    return invalidInteraction;
   }
 
   // 簽章有效仍須確認請求屬於目前的應用程式。
   if (!isRecord(interaction) || interaction.application_id !== bindings.DISCORD_APPLICATION_ID) {
-    return { status: 400, message: 'Invalid interaction' };
+    return invalidInteraction;
   }
 
   // Discord 驗證入口的 PING 沒有操作者資訊，須先於指令授權處理。
@@ -118,15 +294,36 @@ export async function receiveDiscordInteraction(
     return { status: 200, response: { type: InteractionResponseType.PONG } };
   }
 
+  if (interaction.type === InteractionType.MODAL_SUBMIT) {
+    return handleRecordSubmission(interaction, bindings, receivedAt);
+  }
+  if (interaction.type === InteractionType.MESSAGE_COMPONENT) {
+    return handleRetry(interaction, bindings);
+  }
+
   if (
     interaction.type !== InteractionType.APPLICATION_COMMAND || !isCommandData(interaction.data)
   ) {
-    return { status: 400, message: 'Invalid interaction' };
+    return invalidInteraction;
   }
 
   // 200 表示成功回覆互動；訊息內容仍會拒絕未授權的使用者。
   if (!isOwner(interaction, bindings)) {
     return { status: 200, response: privateMessage('無法使用此指令') };
+  }
+
+  if (interaction.data.type === 1 && interaction.data.name === 'record') {
+    if (!isSnowflake(interaction.id)) {
+      return invalidInteraction;
+    }
+    if (bindings.DB === undefined) {
+      const message = '日記功能尚未設定資料庫，請完成設定後再執行 /record。';
+      return { status: 200, response: privateMessage(message) };
+    }
+    if (!diaryChannel(bindings)) {
+      return { status: 200, response: privateMessage('日記功能尚未設定，請確認日記頻道與 Bot 設定後再執行 /record。') };
+    }
+    return { status: 200, response: recordForm(interaction.id) };
   }
 
   return { status: 200, response: commandResponse(interaction.data) };

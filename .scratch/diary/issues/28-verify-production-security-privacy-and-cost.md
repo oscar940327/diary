@@ -1,3 +1,4 @@
+
 # 28 — Verify production security, privacy, and cost controls
 
 **What to build:** Run the production-shaped acceptance checks that prove Diary protects its owner and student budget. Authentication, privacy routing, log redaction, cost controls, AI recovery, and service smoke behavior must be demonstrated rather than inferred from configuration.

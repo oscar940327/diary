@@ -1,0 +1,921 @@
+import { applyD1Migrations, createExecutionContext, reset, waitOnExecutionContext } from 'cloudflare:test';
+import { env } from 'cloudflare:workers';
+import { afterEach, beforeAll, expect, it, vi } from 'vitest';
+import worker from '../src/index';
+import { findEntryBySubmission } from '../src/entry-storage';
+import { validateRecordInput } from '../src/record-input';
+import { createDiscordFixture } from './helpers/discord';
+
+const submissionId = '456789012345678901';
+const channelId = '567890123456789012';
+const beforeTaipeiMidnightId = '1575179251613696001'; // 2026-11-25 23:59:59 台北
+const atTaipeiMidnightId = '1575179255808000001'; // 2026-11-26 00:00:00 台北
+const readQuotaError = "Your account has exceeded D1's free tier daily row read limit.";
+const storageQuotaError =
+  "Your account has exceeded D1's maximum account storage limit, please contact Cloudflare to raise your limit";
+let discord: Awaited<ReturnType<typeof createDiscordFixture>>;
+
+beforeAll(async () => {
+  discord = await createDiscordFixture();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+function interaction(data: Record<string, unknown>) {
+  return {
+    application_id: discord.bindings.DISCORD_APPLICATION_ID,
+    guild_id: discord.bindings.DISCORD_GUILD_ID,
+    member: { user: { id: discord.bindings.DISCORD_OWNER_ID } },
+    ...data,
+  };
+}
+
+function recordCommand() {
+  return interaction({ id: submissionId, type: 2, data: { name: 'record', type: 1 } });
+}
+
+function formSubmission(content = '今天的日記', date = '', id = submissionId) {
+  return interaction({
+    id: atTaipeiMidnightId,
+    type: 5,
+    token: 'test-interaction-token',
+    data: {
+      custom_id: `record:${id}`,
+      components: [
+        { type: 18, component: { type: 4, custom_id: 'content', value: content } },
+        { type: 18, component: { type: 4, custom_id: 'date', value: date } },
+      ],
+    },
+  });
+}
+
+function unusedResources() {
+  const readDatabase = vi.fn(() => { throw new Error('Unexpected D1 access'); });
+  const outbound = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  return { bindings: { DB: { prepare: readDatabase } }, readDatabase, outbound };
+}
+
+function mockDiscordReplies() {
+  const acknowledge = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+  const readOriginal = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }));
+  const update = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+  const channel = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({
+    id: channelId, guild_id: discord.bindings.DISCORD_GUILD_ID, type: 0,
+  }));
+  const publish = vi.fn<typeof fetch>().mockImplementation(async () => Response.json({ id: '67890', channel_id: channelId }));
+  vi.spyOn(globalThis, 'fetch').mockImplementation((url, request) => {
+    if (url === `https://discord.com/api/v10/channels/${channelId}/messages`) return publish(url, request);
+    if (url === `https://discord.com/api/v10/channels/${channelId}`) return channel(url, request);
+    if (request?.method === 'POST') return acknowledge(url, request);
+    if (request?.method === 'GET') return readOriginal(url, request);
+    if (request?.method === 'PATCH') return update(url, request);
+    throw new Error('Unexpected outbound request');
+  });
+  return { acknowledge, readOriginal, update, channel, publish };
+}
+
+function retryDisplay(customId: string, extra: Record<string, unknown> = {}) {
+  return interaction({
+    type: 3, id: beforeTaipeiMidnightId, token: 'retry-token',
+    data: { component_type: 2, custom_id: customId }, ...extra,
+  });
+}
+
+it('顯示失敗後由簽署的重試按鈕恢復，完成後再點不重送', async () => {
+  await freshDatabase();
+  const { publish, update } = mockDiscordReplies();
+  publish.mockResolvedValueOnce(Response.json({ code: 50013 }, { status: 403 }));
+  const first = await send({ ...formSubmission(), channel_id: '999999' }, { DB: env.DB });
+  await first.settled();
+  const entry = await savedEntry();
+  expect(entry).not.toBeNull();
+  const reply = JSON.parse(String(update.mock.lastCall?.[1]?.body));
+  expect(reply.content).toBe('日記已保存，但機器人沒有頻道發言權限，請開啟權限後重試顯示。');
+  const button = reply.components[0].components[0];
+  expect(button).toMatchObject({ type: 2, label: '重試顯示', custom_id: `retry:entry:${entry?.id}` });
+
+  const retry = await send(retryDisplay(button.custom_id), { DB: env.DB });
+  expect(retry.response.status).toBe(202);
+  await retry.settled();
+  expect(update.mock.lastCall?.[0]).toContain('/retry-token/messages/@original');
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body)).content).toBe('日記已保存並已顯示。');
+  const again = await send(retryDisplay(button.custom_id, { id: atTaipeiMidnightId, token: 'another-token' }), { DB: env.DB });
+  await again.settled();
+  expect(publish).toHaveBeenCalledTimes(2);
+  expect(await savedEntry()).toMatchObject({ id: entry?.id, displayStatus: 'sent' });
+});
+
+it.each([{ DISCORD_BOT_TOKEN: undefined }, { DISCORD_DIARY_CHANNEL_ID: undefined }])(
+  '沒有完整的日記頻道設定時，停止保存與重試', async (override) => {
+    const { bindings, readDatabase, outbound } = unusedResources();
+    for (const payload of [recordCommand(), formSubmission(), retryDisplay(`retry:submission:${submissionId}`)]) {
+      const { response } = await send(payload, { ...bindings, ...override });
+      expect(await response.json()).toMatchObject({ type: 4, data: { flags: 64 } });
+    }
+    expect(readDatabase).not.toHaveBeenCalled();
+    expect(outbound).not.toHaveBeenCalled();
+  },
+);
+
+it('核對到其他 guild 的頻道時，已保存的原文不能發出', async () => {
+  await freshDatabase();
+  const { channel, publish, update } = mockDiscordReplies();
+  channel.mockResolvedValueOnce(Response.json({ id: channelId, guild_id: '999', type: 0 }));
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+  expect(publish).not.toHaveBeenCalled();
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記', displayStatus: 'pending' });
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body)).content).toContain('無法存取設定的日記頻道');
+});
+
+it.each([
+  { member: { user: { id: '999' } }, guild_id: undefined },
+  { guild_id: '999' },
+  { member: undefined },
+])('未授權的重試不碰資料庫與頻道', async (override) => {
+  const { bindings, readDatabase, outbound } = unusedResources();
+  const { response } = await send(retryDisplay(`retry:submission:${submissionId}`, override), bindings);
+  expect(await response.json()).toEqual({ type: 4, data: { content: '無法使用此指令', flags: 64 } });
+  expect(readDatabase).not.toHaveBeenCalled();
+  expect(outbound).not.toHaveBeenCalled();
+});
+
+it('重試本次提交時只查既有資料，沒有紀錄便停止', async () => {
+  await freshDatabase();
+  const { publish, update } = mockDiscordReplies();
+  const { response, settled } = await send(retryDisplay(`retry:submission:${submissionId}`), { DB: env.DB });
+  expect(response.status).toBe(202);
+  await settled();
+  expect(await savedEntry()).toBeNull();
+  expect(publish).not.toHaveBeenCalled();
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body)).content).toContain('找不到這次提交');
+});
+
+it('重試不會讀出或發送其他環境、擁有者的紀錄', async () => {
+  await freshDatabase();
+  const id = crypto.randomUUID();
+  await env.DB.prepare(`
+    INSERT INTO entries (id, application_id, owner_id, guild_id, submission_id, original_content, entry_date, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).bind(id, '999', '888', discord.bindings.DISCORD_GUILD_ID, submissionId, '其他環境的原文', '2026-11-25', '2026-11-25').run();
+  const { publish, update, channel } = mockDiscordReplies();
+  const { settled } = await send(retryDisplay(`retry:entry:${id}`), { DB: env.DB });
+  await settled();
+  expect(channel).not.toHaveBeenCalled();
+  expect(publish).not.toHaveBeenCalled();
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body)).content).toBe('目前找不到可重試的日記，請確認紀錄後再操作。');
+});
+
+it('兩次重試同時點擊時只有一個操作會發送', async () => {
+  await freshDatabase();
+  const { publish, update } = mockDiscordReplies();
+  publish.mockResolvedValueOnce(new Response(null, { status: 429 }));
+  const first = await send(formSubmission(), { DB: env.DB });
+  await first.settled();
+  const entry = await savedEntry();
+  const id = `retry:entry:${entry?.id}`;
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<Response>();
+  publish.mockImplementationOnce(() => { started.resolve(); return release.promise; });
+  const retry = await send(retryDisplay(id), { DB: env.DB });
+  await started.promise;
+  try {
+    const another = await send(retryDisplay(id, { id: atTaipeiMidnightId, token: 'parallel-token' }), { DB: env.DB });
+    await another.settled();
+    expect(publish).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(update.mock.lastCall?.[1]?.body)).content).toContain('正在處理顯示');
+  } finally {
+    release.resolve(Response.json({ id: '888', channel_id: channelId }));
+    await retry.settled();
+  }
+  expect(await savedEntry()).toMatchObject({ id: entry?.id, displayStatus: 'sent' });
+});
+
+it.each([
+  [404, '無法存取設定的日記頻道'],
+  [429, 'Discord 暫時限制發送'],
+  [400, '原因暫不明'],
+  [503, '部分訊息可能已送達'],
+] as const)('顯示收到 %i 時私下回報原因並保留保存結果', async (status, expected) => {
+  await freshDatabase();
+  const { publish, update } = mockDiscordReplies();
+  publish.mockResolvedValueOnce(Response.json({ message: '敏感外部錯誤' }, { status }));
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+  const reply = JSON.parse(String(update.mock.lastCall?.[1]?.body));
+  expect(reply.content).toContain('日記已保存');
+  expect(reply.content).toContain(expected);
+  expect(reply.content).not.toContain('敏感外部錯誤');
+  expect(reply.components[0].components[0].label).toBe('重試顯示');
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it('D1 慢且長文只送出一部分時，保留回覆時間與已送出的進度', async () => {
+  await freshDatabase();
+  const { publish, update } = mockDiscordReplies();
+  const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation(ms => nativeTimeout(ms === 24_000 ? 750 : ms));
+  const db = {
+    prepare(sql: string) {
+      if (!sql.includes('INSERT INTO entries')) return env.DB.prepare(sql);
+      return { bind: (...params: unknown[]) => ({ async first() {
+        await scheduler.wait(170);
+        return env.DB.prepare(sql).bind(...params).first();
+      } }) };
+    },
+    batch: env.DB.batch.bind(env.DB),
+  };
+  publish.mockResolvedValueOnce(Response.json({ id: '789', channel_id: channelId }));
+  publish.mockImplementationOnce(async (_url, request) => {
+    if (!request?.signal) throw new Error('缺少發送期限');
+    await scheduler.wait(3_500, { signal: request.signal });
+    return Response.json({ id: '790', channel_id: channelId });
+  });
+  const { settled } = await send(formSubmission('日'.repeat(2_100)), { DB: db });
+  await settled();
+  expect(publish).toHaveBeenCalledTimes(2);
+  expect(publish.mock.lastCall?.[1]?.signal?.aborted).toBe(true);
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body)).content).toContain('部分訊息可能已送達');
+  const entry = await savedEntry();
+  const { results } = await env.DB.prepare('SELECT status, message_id FROM entry_messages WHERE entry_id = ? ORDER BY position')
+    .bind(entry?.id).all();
+  expect(results).toEqual([{ status: 'sent', message_id: '789' }, { status: 'uncertain', message_id: null }]);
+}, 8_000);
+
+function savedEntry(id = submissionId) {
+  return findEntryBySubmission(env.DB, {
+    applicationId: discord.bindings.DISCORD_APPLICATION_ID,
+    guildId: discord.bindings.DISCORD_GUILD_ID,
+    ownerId: discord.bindings.DISCORD_OWNER_ID,
+    submissionId: id,
+  });
+}
+
+async function freshDatabase() {
+  await reset();
+  await applyD1Migrations(env.DB, env.TEST_D1_MIGRATIONS);
+}
+
+function databaseRejectingInsert(reason: string) {
+  const prepare = vi.fn<(sql: string) => object>(sql => env.DB.prepare(sql));
+  prepare.mockReturnValueOnce({
+    bind: () => ({ first: async () => { throw new Error(`D1_ERROR: ${reason}`); } }),
+  });
+  return { prepare };
+}
+
+it('never starts a D1 write when Discord rejects the private acknowledgment', async () => {
+  const readDatabase = vi.fn(() => { throw new Error('Unexpected D1 access'); });
+  const outbound = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 404 }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { response, settled } = await send(formSubmission(), { DB: { prepare: readDatabase } });
+  await settled();
+
+  expect(readDatabase).not.toHaveBeenCalled();
+  expect(response.status).toBe(202);
+  expect(outbound).toHaveBeenCalledExactlyOnceWith(
+    `https://discord.com/api/v10/interactions/${atTaipeiMidnightId}/test-interaction-token/callback`,
+    expect.objectContaining({ method: 'POST' }),
+  );
+  expect(errors.mock.calls).toEqual([['RECORD_ACKNOWLEDGMENT_FAILED']]);
+});
+
+it('never starts a D1 write when the Discord acknowledgment times out', async () => {
+  const readDatabase = vi.fn(() => { throw new Error('Unexpected D1 access'); });
+  const { acknowledge, update } = mockDiscordReplies();
+  acknowledge.mockImplementation(async (_url, request) => {
+    const signal = request?.signal;
+    if (!signal) throw new Error('Missing acknowledgment deadline');
+    await scheduler.wait(3_000, { signal });
+    return new Response(null, { status: 204 });
+  });
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { response, settled } = await send(formSubmission(), { DB: { prepare: readDatabase } });
+  await settled();
+
+  expect(response.status).toBe(202);
+  expect(acknowledge).toHaveBeenCalledTimes(1);
+  expect(acknowledge.mock.lastCall?.[1]?.signal?.aborted).toBe(true);
+  expect(readDatabase).not.toHaveBeenCalled();
+  expect(update).not.toHaveBeenCalled();
+  expect(errors.mock.calls).toEqual([['RECORD_ACKNOWLEDGMENT_FAILED']]);
+});
+
+it('recovers a missed save when Discord confirms the replay already has a private deferred reply', async () => {
+  await freshDatabase();
+  const { acknowledge, readOriginal, update } = mockDiscordReplies();
+  acknowledge
+    .mockRejectedValueOnce(new TypeError('Network connection lost.'))
+    .mockResolvedValueOnce(Response.json({ code: 40060 }, { status: 400 }));
+  readOriginal.mockResolvedValueOnce(Response.json({ flags: 192 }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const submission = formSubmission();
+
+  const first = await send(submission, { DB: env.DB });
+  await first.settled();
+  expect(await savedEntry()).toBeNull();
+  expect(update).not.toHaveBeenCalled();
+
+  const replay = await send(submission, { DB: env.DB });
+  await replay.settled();
+  const url = 'https://discord.com/api/v10/webhooks/123456789012345678/test-interaction-token/messages/@original';
+  expect(readOriginal).toHaveBeenCalledExactlyOnceWith(url, expect.objectContaining({ method: 'GET' }));
+  expect(readOriginal.mock.lastCall?.[1]?.signal).toBe(acknowledge.mock.lastCall?.[1]?.signal);
+  expect(update).toHaveBeenCalledExactlyOnceWith(url, expect.objectContaining({ method: 'PATCH' }));
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty('content', '日記已保存並已顯示。');
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+  expect(errors.mock.calls).toEqual([['RECORD_ACKNOWLEDGMENT_FAILED']]);
+});
+
+it.each([
+  ['public loading reply', () => Response.json({ flags: 128 })],
+  ['private completed reply', () => Response.json({ flags: 64 })],
+  ['reply with malformed flags', () => Response.json({ flags: '192' })],
+  ['missing reply', () => new Response(null, { status: 404 })],
+] as const)('does not start saving a replay with a %s', async (_description, originalReply) => {
+  const { acknowledge, readOriginal, update } = mockDiscordReplies();
+  acknowledge.mockResolvedValueOnce(Response.json({ code: 40060 }, { status: 400 }));
+  readOriginal.mockResolvedValueOnce(originalReply());
+  const prepare = vi.fn();
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { settled } = await send(formSubmission(), { DB: { prepare } });
+  await settled();
+
+  expect(readOriginal).toHaveBeenCalledTimes(1);
+  expect(prepare).not.toHaveBeenCalled();
+  expect(update).not.toHaveBeenCalled();
+  expect(errors.mock.calls).toEqual([['RECORD_ACKNOWLEDGMENT_FAILED']]);
+});
+
+it('acknowledges the submission before the D1 write and updates the same private reply after saving', async () => {
+  await freshDatabase();
+  const { acknowledge, update } = mockDiscordReplies();
+  const acknowledgment = Promise.withResolvers<Response>();
+  acknowledge.mockReturnValue(acknowledgment.promise);
+  const writeGate = Promise.withResolvers<void>();
+  const prepare = vi.fn((sql: string) => ({
+    bind(...values: unknown[]) {
+      return {
+        async first() {
+          await writeGate.promise;
+          return env.DB.prepare(sql).bind(...values).first();
+        },
+      };
+    },
+  }));
+  const originalContent = '  保留原文 🐈\r\n第二行\n';
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-25T16:00:00.000Z'));
+
+  const db = {
+    prepare: (sql: string) => sql.includes('INSERT INTO entries') ? prepare(sql) : env.DB.prepare(sql),
+    batch: env.DB.batch.bind(env.DB),
+  };
+  const { response, settled } = await send(formSubmission(originalContent), { DB: db });
+  try {
+    expect(response.status).toBe(202);
+    expect(await response.text()).toBe('');
+    expect(acknowledge).toHaveBeenCalledExactlyOnceWith(
+      `https://discord.com/api/v10/interactions/${atTaipeiMidnightId}/test-interaction-token/callback`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+    expect(JSON.parse(String(acknowledge.mock.lastCall?.[1]?.body))).toEqual({ type: 5, data: { flags: 64 } });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+  } finally {
+    acknowledgment.resolve(new Response(null, { status: 204 }));
+    writeGate.resolve();
+    await settled();
+    vi.useRealTimers();
+  }
+
+  expect(await savedEntry()).toMatchObject({
+    originalContent,
+    entryDate: '2026-11-26',
+    requestedDate: null,
+    createdAt: '2026-11-25T16:00:00.000Z',
+    displayStatus: 'sent',
+  });
+  expect(prepare).toHaveBeenCalledTimes(1);
+  expect(update).toHaveBeenCalledExactlyOnceWith(
+    'https://discord.com/api/v10/webhooks/123456789012345678/test-interaction-token/messages/@original',
+    expect.objectContaining({ method: 'PATCH' }),
+  );
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toMatchObject({ content: '日記已保存並已顯示。' });
+  for (const request of [acknowledge.mock.lastCall?.[1], update.mock.lastCall?.[1]]) {
+    expect(new Headers(request?.headers).get('user-agent')).toEqual(
+      expect.stringMatching(/^DiscordBot \(https:\/\/github\.com\/oscar940327\/diary, \d+\.\d+\.\d+\)$/),
+    );
+  }
+});
+
+it('privately reports an unconfirmed save before a slow D1 write finishes', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  const writeGate = Promise.withResolvers<void>();
+  const write = Promise.withResolvers<unknown>();
+  const db = {
+    prepare(sql: string) {
+      return {
+        bind(...values: unknown[]) {
+          return {
+            first() {
+              write.resolve(writeGate.promise.then(() => env.DB.prepare(sql).bind(...values).first()));
+              return write.promise;
+            },
+          };
+        },
+      };
+    },
+  };
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+
+  const { response, settled } = await send(formSubmission(), { DB: db });
+  try {
+    expect(response.status).toBe(202);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(update).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty(
+      'content',
+      expect.stringContaining('保存結果未確認'),
+    );
+  } finally {
+    writeGate.resolve();
+    await settled();
+    vi.useRealTimers();
+  }
+
+  await write.promise;
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+  expect(update).toHaveBeenCalledTimes(1);
+});
+
+it('leaves no entry when a form is opened and never submitted', async () => {
+  await freshDatabase();
+  const outbound = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  const { response, settled } = await send(recordCommand(), { DB: env.DB });
+
+  expect(await response.json()).toHaveProperty('type', 9);
+  await settled();
+  expect(await savedEntry()).toBeNull();
+  expect(outbound).not.toHaveBeenCalled();
+});
+
+it('privately explains how to configure D1 instead of opening a form when the binding is missing', async () => {
+  const { response } = await send(recordCommand());
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    type: 4,
+    data: { flags: 64, content: '日記功能尚未設定資料庫，請完成設定後再執行 /record。' },
+  });
+});
+
+it('privately explains how to proceed if the D1 binding is missing at submission', async () => {
+  const outbound = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+  const { response, settled } = await send(formSubmission());
+
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    type: 4,
+    data: { flags: 64, content: '日記未保存，資料庫尚未設定，請完成設定後重新送出。' },
+  });
+  await settled();
+  expect(outbound).not.toHaveBeenCalled();
+});
+
+it('reports a confirmed write failure when the local schema has not been applied', async () => {
+  await reset();
+  const { update } = mockDiscordReplies();
+  const { response, settled } = await send(formSubmission(), { DB: env.DB });
+
+  expect(response.status).toBe(202);
+  await settled();
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty(
+    'content',
+    '日記未保存，資料庫尚未初始化，請套用資料表遷移後重新送出。',
+  );
+});
+
+it.each([
+  ["Your account has exceeded D1's free tier daily row write limit.", '每日額度已用完', '等額度重置'],
+  [readQuotaError, '每日額度已用完', '等額度重置'],
+  [storageQuotaError, '儲存空間已達上限', '釋出空間'],
+  ['Exceeded maximum DB size.', '儲存空間已達上限', '釋出空間'],
+])('reports a confirmed refusal when D1 rejects the insert with %s', async (reason, explanation, nextStep) => {
+  await freshDatabase();
+  const db = databaseRejectingInsert(reason);
+  const { update } = mockDiscordReplies();
+  const { response, settled } = await send(formSubmission(), { DB: db });
+
+  expect(response.status).toBe(202);
+  await settled();
+  const { content } = JSON.parse(String(update.mock.lastCall?.[1]?.body));
+  expect(content).toContain('日記未保存');
+  expect(content).toContain(explanation);
+  expect(content).toContain(nextStep);
+});
+
+it.each([
+  ['今天的日記', '日記已保存並已顯示。'],
+  ['修改過的日記', '這次提交已有不同的內容或日期'],
+])('checks the prior submission when storage quota rejects a replay of %s', async (content, expectedReply) => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  const first = await send(formSubmission(), { DB: env.DB });
+  await first.settled();
+  const original = await savedEntry();
+  expect(original).not.toBeNull();
+
+  const db = databaseRejectingInsert(storageQuotaError);
+  const retry = await send({
+    ...formSubmission(content), id: beforeTaipeiMidnightId, token: 'replay-interaction-token',
+  }, { DB: db });
+  await retry.settled();
+
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty(
+    'content', expect.stringContaining(expectedReply),
+  );
+  expect(await savedEntry()).toEqual(original);
+});
+
+it.each([false, true])('reports uncertainty when the quota prevents checking a replay (insert rejected: %s)', async (
+  insertRejected,
+) => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  const first = await send(formSubmission(), { DB: env.DB });
+  await first.settled();
+  const original = await savedEntry();
+  expect(original).not.toBeNull();
+
+  const { prepare } = insertRejected
+    ? databaseRejectingInsert(readQuotaError)
+    : { prepare: vi.fn<(sql: string) => object>().mockImplementationOnce(sql => env.DB.prepare(sql)) };
+  prepare.mockImplementationOnce(() => { throw new Error(`D1_ERROR: ${readQuotaError}`); });
+  const retry = await send({
+    ...formSubmission(), id: beforeTaipeiMidnightId, token: 'replay-interaction-token',
+  }, { DB: { prepare } });
+  await retry.settled();
+
+  expect(prepare).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty(
+    'content', expect.stringContaining('每日額度已用完，請保留原文並在額度重置後'),
+  );
+  expect(String(update.mock.lastCall?.[1]?.body)).not.toContain('再送出');
+  expect(await savedEntry()).toEqual(original);
+});
+
+it('reports an unknown write outcome without saying the entry was saved or leaking details', async () => {
+  const original = '私人內容代碼';
+  const db = { prepare() { throw new Error(`Network connection lost: ${original}`); } };
+  const { update } = mockDiscordReplies();
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { response, settled } = await send(formSubmission(original), { DB: db });
+
+  expect(response.status).toBe(202);
+  await settled();
+  const reply = String(update.mock.lastCall?.[1]?.body);
+  expect(JSON.parse(reply)).toHaveProperty('content', expect.stringContaining('保存結果未確認'));
+  expect(reply).not.toContain(original);
+  expect(reply).not.toContain('Network connection lost');
+  expect(reply).not.toContain('test-interaction-token');
+  expect(errors.mock.calls).toEqual([]);
+});
+
+it('reports a conflicting submission without replacing the saved content', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  const first = await send(formSubmission('原文', '2024-02-29'), { DB: env.DB });
+  await first.settled();
+  const original = await savedEntry();
+  expect(original).toMatchObject({ originalContent: '原文', entryDate: '2024-02-29' });
+
+  const changed = await send(
+    { ...formSubmission('修改內容', '2024-02-29'), id: beforeTaipeiMidnightId, token: 'replay-interaction-token' },
+    { DB: env.DB },
+  );
+  expect(changed.response.status).toBe(202);
+  await changed.settled();
+  expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty('content', expect.stringContaining('重新開啟表單'));
+  expect(await savedEntry()).toEqual(original);
+});
+
+it.each([500, 502, 503, 504])('retries a temporary %i on the same private reply', async (status) => {
+  await freshDatabase();
+  const { acknowledge, update } = mockDiscordReplies();
+  update.mockResolvedValueOnce(new Response(null, { status }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { response, settled } = await send(formSubmission(), { DB: env.DB });
+
+  expect(response.status).toBe(202);
+  await settled();
+  expect(acknowledge).toHaveBeenCalledTimes(1);
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.calls[1]?.[0]).toBe(update.mock.calls[0]?.[0]);
+  expect(update.mock.calls[1]?.[1]?.body).toBe(update.mock.calls[0]?.[1]?.body);
+  expect(update.mock.calls[1]?.[1]?.signal).toBe(update.mock.calls[0]?.[1]?.signal);
+  expect(errors).not.toHaveBeenCalled();
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it('retries the same private reply when the PATCH connection resets', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  update.mockRejectedValueOnce(new TypeError('Network connection lost.'));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.calls[1]).toEqual(update.mock.calls[0]);
+  expect(errors).not.toHaveBeenCalled();
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it.each([
+  ['Retry-After header', () => Response.json({}, { status: 429, headers: { 'retry-after': '0.35' } })],
+  ['retry_after body field', () => Response.json({ retry_after: 0.35 }, { status: 429 })],
+] as const)('waits for a short rate limit from the %s before retrying', async (_source, limitedReply) => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  let limitedAt = 0;
+  update.mockImplementationOnce(async () => {
+    limitedAt = performance.now();
+    return limitedReply();
+  });
+  update.mockImplementationOnce(async () => {
+    expect(performance.now() - limitedAt).toBeGreaterThanOrEqual(340);
+    return new Response(null, { status: 204 });
+  });
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.calls[1]).toEqual(update.mock.calls[0]);
+  expect(errors).not.toHaveBeenCalled();
+});
+
+it('stops when the rate limit exceeds the remaining time for the reply', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  update.mockResolvedValueOnce(new Response(null, { status: 503 }));
+  update.mockResolvedValueOnce(Response.json({}, { status: 429, headers: { 'retry-after': '3.95' } }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+  const { settled } = await send(formSubmission(), { DB: env.DB });
+  await settled();
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.lastCall?.[1]?.signal?.aborted).toBe(false);
+  expect(errors.mock.calls).toEqual([['RECORD_REPLY_UPDATE_FAILED']]);
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it.each([403, 429])('keeps the saved entry when Discord rejects the private update with %i', async (status) => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  update.mockResolvedValue(new Response('秘密錯誤本文', { status }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { response, settled } = await send(formSubmission(), { DB: env.DB });
+
+  expect(response.status).toBe(202);
+  await settled();
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(errors.mock.calls).toEqual([['RECORD_REPLY_UPDATE_FAILED']]);
+});
+
+it('keeps the saved entry without retrying a private reply Discord reports as missing', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  update.mockResolvedValueOnce(new Response(null, { status: 404 }));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { response, settled } = await send(formSubmission(), { DB: env.DB });
+
+  expect(response.status).toBe(202);
+  await settled();
+  expect(update).toHaveBeenCalledTimes(1);
+  expect(errors.mock.calls).toEqual([['RECORD_REPLY_UPDATE_FAILED']]);
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+});
+
+it('keeps the saved entry when a retry reaches the original reply deadline', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  update.mockResolvedValueOnce(new Response(null, { status: 503 }));
+  update.mockImplementation(async (_url, request) => {
+    const signal = request?.signal;
+    if (!signal) throw new Error('Missing reply deadline');
+    await scheduler.wait(5_000, { signal });
+    return new Response(null, { status: 204 });
+  });
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const { response, settled } = await send(formSubmission(), { DB: env.DB });
+
+  expect(response.status).toBe(202);
+  await settled();
+  expect(update).toHaveBeenCalledTimes(2);
+  expect(update.mock.lastCall?.[1]?.signal).toBe(update.mock.calls[0]?.[1]?.signal);
+  expect(update.mock.lastCall?.[1]?.signal?.aborted).toBe(true);
+  expect(errors.mock.calls).toEqual([['RECORD_REPLY_UPDATE_FAILED']]);
+  expect(await savedEntry()).toMatchObject({ originalContent: '今天的日記' });
+}, 10_000);
+
+it('uses the submission day when an undated form reaches the Worker after Taipei midnight', async () => {
+  await freshDatabase();
+  mockDiscordReplies();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-25T16:00:05.000Z'));
+
+  const { response, settled } = await send({ ...formSubmission(), id: beforeTaipeiMidnightId }, { DB: env.DB });
+  expect(response.status).toBe(202);
+  await settled();
+  expect(await savedEntry()).toMatchObject({
+    entryDate: '2026-11-25',
+    requestedDate: null,
+    createdAt: '2026-11-25T16:00:05.000Z',
+  });
+});
+
+it('rejects a date still in the future at submission even if the Worker receives it after Taipei midnight', async () => {
+  const { bindings, readDatabase, outbound } = unusedResources();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-25T16:00:05.000Z'));
+
+  const { response, settled } = await send(
+    { ...formSubmission('今天的日記', '2026-11-26'), id: beforeTaipeiMidnightId },
+    bindings,
+  );
+  expect(await response.json()).toMatchObject({
+    type: 4,
+    data: { flags: 64, content: expect.stringContaining('今天或過去的日期') },
+  });
+  await settled();
+  expect(readDatabase).not.toHaveBeenCalled();
+  expect(outbound).not.toHaveBeenCalled();
+});
+
+it.each([undefined, 'invalid', '18446744073709551616'])(
+  'rejects a submission ID of %s before saving',
+  async (id) => {
+    const { bindings, readDatabase, outbound } = unusedResources();
+    const { response, settled } = await send({ ...formSubmission(), id }, bindings);
+
+    expect(response.status).toBe(400);
+    await settled();
+    expect(readDatabase).not.toHaveBeenCalled();
+    expect(outbound).not.toHaveBeenCalled();
+  },
+);
+
+it('keeps distinct entries on the same day and preserves the original date when a form is replayed', async () => {
+  await freshDatabase();
+  const { update } = mockDiscordReplies();
+  const secondId = '456789012345678902';
+  const secondInteractionId = '1575179251613696002';
+  vi.useFakeTimers({ toFake: ['Date'] });
+  try {
+    vi.setSystemTime(new Date('2026-11-25T15:59:59.000Z'));
+    for (const [formId, interactionId] of [[submissionId, beforeTaipeiMidnightId], [secondId, secondInteractionId]] as const) {
+      const payload = { ...formSubmission('相同文字', '', formId), id: interactionId };
+      const { response, settled } = await send(payload, { DB: env.DB });
+      expect(response.status).toBe(202);
+      await settled();
+    }
+    const original = await savedEntry();
+    expect(original).toMatchObject({ entryDate: '2026-11-25', createdAt: '2026-11-25T15:59:59.000Z' });
+    const second = await savedEntry(secondId);
+    expect(second).toMatchObject({ entryDate: '2026-11-25', originalContent: '相同文字' });
+    expect(second?.id).not.toBe(original?.id);
+
+    vi.setSystemTime(new Date('2026-11-25T16:00:00.000Z'));
+    const replayId = atTaipeiMidnightId;
+    const replay = await send(
+      { ...formSubmission('相同文字'), id: replayId, token: 'replay-interaction-token' },
+      { DB: env.DB },
+    );
+    expect(replay.response.status).toBe(202);
+    await replay.settled();
+    expect(await savedEntry()).toEqual(original);
+    expect(await savedEntry(replayId)).toBeNull();
+    expect(update.mock.lastCall?.[0]).toContain('/replay-interaction-token/messages/@original');
+    expect(JSON.parse(String(update.mock.lastCall?.[1]?.body))).toHaveProperty('content', '日記已保存並已顯示。');
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each([
+  ['the default Taipei day', '   ', null, '2026-11-26'],
+  ['an explicitly selected Taipei day', '2026-11-26', '2026-11-26', '2026-11-26'],
+  ['a past leap day', ' 2024-02-29 ', '2024-02-29', '2024-02-29'],
+] as const)('accepts %s and keeps all 4,000 units of input', (_label, rawDate, requestedDate, entryDate) => {
+  const originalContent = ' \r\n' + '🐈'.repeat(1998) + ' ';
+  expect(validateRecordInput(originalContent, rawDate, new Date('2026-11-25T16:00:00.000Z'))).toEqual({
+    ok: true,
+    originalContent,
+    requestedDate,
+    entryDate,
+  });
+});
+
+async function send(payload: unknown, bindings: object = {}) {
+  const ctx = createExecutionContext();
+  const response = await worker.fetch(
+    await discord.signedRequest(JSON.stringify(payload)),
+    { ...discord.bindings, DISCORD_DIARY_CHANNEL_ID: channelId, DISCORD_BOT_TOKEN: 'fake-bot-token', ...bindings },
+    ctx,
+  );
+  return { response, settled: () => waitOnExecutionContext(ctx) };
+}
+
+it('opens a multiline diary form with an optional date for the owner', async () => {
+  const { response } = await send(recordCommand(), { DB: env.DB });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    type: 9,
+    data: {
+      custom_id: 'record:456789012345678901',
+      components: [
+        { type: 18, component: { type: 4, style: 2, custom_id: 'content', required: true, max_length: 4000 } },
+        { type: 18, component: { type: 4, style: 1, custom_id: 'date', required: false } },
+      ],
+    },
+  });
+});
+
+it.each([
+  ['another user', { member: { user: { id: '789012345678901234' } } }],
+  ['an administrator', { member: { user: { id: '789012345678901234' }, permissions: '8' } }],
+  ['another guild', { guild_id: '890123456789012345' }],
+  ['a DM', { guild_id: undefined, member: undefined, user: { id: '234567890123456789' } }],
+  ['a missing member', { member: undefined }],
+] as const)('privately rejects opening and submitting the form for %s', async (_label, overrides) => {
+  const { bindings, readDatabase, outbound } = unusedResources();
+  for (const payload of [recordCommand(), formSubmission()]) {
+    const { response, settled } = await send({ ...payload, ...overrides }, bindings);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ type: 4, data: { flags: 64, content: '無法使用此指令' } });
+    await settled();
+  }
+  expect(readDatabase).not.toHaveBeenCalled();
+  expect(outbound).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['only whitespace', ' \t\n ', '', '請輸入內容'],
+  ['more than 4,000 UTF-16 units', '🐈'.repeat(2000) + '字', '', '最多 4,000'],
+  ['an ambiguous date', '日記', '11/24/2026', 'YYYY-MM-DD'],
+  ['a nonexistent day', '日記', '2026-02-29', '有效日期'],
+  ['a future Taipei date', '日記', '2026-11-27', '今天或過去'],
+] as const)('privately rejects %s without saving', async (_label, content, date, reason) => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-25T16:00:00.000Z'));
+  try {
+    const { bindings, readDatabase, outbound } = unusedResources();
+    const { response, settled } = await send(formSubmission(content, date), bindings);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      type: 4,
+      data: { flags: 64, content: expect.stringContaining(reason) },
+    });
+    await settled();
+    expect(readDatabase).not.toHaveBeenCalled();
+    expect(outbound).not.toHaveBeenCalled();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each([
+  ['an unknown form', { custom_id: 'other:456789012345678901', components: [] }],
+  ['a missing content field', { custom_id: 'record:456789012345678901', components: [] }],
+  ['a non-text component value', {
+    custom_id: 'record:456789012345678901',
+    components: [{ type: 18, component: { type: 4, custom_id: 'content', value: 123 } }],
+  }],
+  ['duplicate content fields', {
+    custom_id: 'record:456789012345678901',
+    components: [
+      { type: 18, component: { type: 4, custom_id: 'content', value: '日記' } },
+      { type: 18, component: { type: 4, custom_id: 'content', value: '重複' } },
+    ],
+  }],
+] as const)('rejects %s before touching D1 or Discord', async (_label, data) => {
+  const { bindings, readDatabase, outbound } = unusedResources();
+  const { response, settled } = await send({ ...formSubmission(), data }, bindings);
+
+  expect(response.status).toBe(400);
+  expect(await response.text()).toBe('Invalid interaction');
+  await settled();
+  expect(readDatabase).not.toHaveBeenCalled();
+  expect(outbound).not.toHaveBeenCalled();
+});
